@@ -1,0 +1,3117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c1521">
+  <title>Hilos y planificación de la CPU · Sistemas Operativos</title>
+  <style>
+:root {
+  color-scheme: dark;
+  --page: #090f18;
+  --bar: #0c1521;
+  --slide: #162233;
+  --panel: #111d2c;
+  --surface: #162638;
+  --border: #2b4054;
+  --text: #f1f6fd;
+  --muted: #b9c9d9;
+  --accent: #78dbff;
+  --accent-button: #48b9e6;
+  --accent-surface: #16364b;
+  --text-on-accent: #061625;
+  --mono: Consolas, "Liberation Mono", monospace;
+  --body: "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scrollbar-color: #435c76 #0b131e; }
+body {
+  margin: 0;
+  min-width: 300px;
+  min-height: 100dvh;
+  background: radial-gradient(ellipse at 50% 4%, #132236, transparent 65%), var(--page);
+  color: var(--text);
+  font: 16px/1.5 var(--body);
+  padding-bottom: 74px;
+}
+button, input, select { font: inherit; color: inherit; }
+button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #1a2a3e;
+  padding: 8px 13px;
+  font-weight: 640;
+  font-size: .89rem;
+  cursor: pointer;
+  line-height: 1.27;
+  min-height: 38px;
+}
+button:hover:not(:disabled) { border-color: #5383a5; background: #203b53; }
+button:disabled { opacity: .45; cursor: default; }
+button[aria-pressed="true"] { background: var(--accent-surface); border-color: #4299c0; color: #d4f5ff; }
+button.primary { background: var(--accent-button); border-color: #6acfff; color: var(--text-on-accent); font-weight: 750; }
+button.primary:hover:not(:disabled) { background: #77d7ff; }
+button.large { font-size: .96rem; min-height: 44px; padding: 10px 16px; }
+:focus-visible { outline: 2px solid #aceaff; outline-offset: 3px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+p { margin: 0; }
+h2, h3, ol, ul { margin-top: 0; }
+h3 { font-size: 1rem; margin-bottom: 6px; }
+small, .small { font-size: .848rem; color: var(--muted); }
+code, .mono { font-family: var(--mono); }
+code { overflow-wrap: anywhere; }
+pre { white-space: pre-wrap; margin: 0; }
+.frame { width: min(100% - 48px, 1240px); margin-inline: auto; }
+.bar-top { position: sticky; top: 0; z-index: 5; background: var(--bar); border-bottom: 1px solid var(--border); }
+.bar-inner { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 13px; }
+.brand { display: flex; gap: 10px; align-items: center; font-weight: 740; letter-spacing: -.014em; }
+.brand-icon {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border-radius: 8px;
+  border: 1px solid #365774;
+  background: #192f43;
+  color: var(--accent);
+  font: 750 .85rem var(--mono);
+}
+.label { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 750; color: var(--accent); }
+.terms-button { min-height: 32px; padding: 4px 11px; color: #c9edff; }
+.top-actions, .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.top-actions button { white-space: nowrap; min-height: 34px; font-size: .82rem; }
+.stage {
+  min-height: calc(100dvh - 132px);
+  padding-block: 23px 17px;
+  display: grid;
+  align-items: center;
+}
+.slide-surface {
+  min-width: 0;
+  padding: clamp(17px, 2.8vw, 34px);
+  border-radius: 15px;
+  border: 1px solid var(--border);
+  background: linear-gradient(150deg, #172638, #131e2d 66%);
+  box-shadow: 0 18px 47px #0006;
+}
+.slide-head { margin-bottom: 17px; }
+.slide-head h1 {
+  font: 745 clamp(1.95rem, 3.8vw, 3.15rem)/1.12 var(--body);
+  letter-spacing: -.034em;
+  margin: 5px 0 10px;
+  max-width: 1100px;
+  text-wrap: balance;
+}
+.slide-head p { font-size: clamp(.97rem, 1.25vw, 1.11rem); max-width: 970px; color: var(--muted); }
+.panel { border: 1px solid var(--border); border-radius: 11px; background: var(--panel); padding: clamp(13px, 1.8vw, 22px); }
+.panel.opening { background: transparent; border: 0; padding: 0; }
+.panel > :first-child { margin-top: 0; }
+.panel > :last-child { margin-bottom: 0; }
+.stack { display: grid; gap: 13px; }
+.stack-sm { display: grid; gap: 8px; }
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.tri { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.strip { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.between { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.script-hidden .lesson-support { display: none; }
+.lesson-choice {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 4px 13px;
+  padding: 10px 13px;
+  border-block: 1px solid var(--border);
+  background: #132437;
+  margin-bottom: 12px;
+}
+.lesson-support h2 { font-size: .9rem; color: var(--accent); margin: 0; }
+.lesson-choice p, .lesson-choice ol { margin: 0; color: #d7e5f4; font-size: .92rem; }
+.lesson-choice ol { padding-left: 1.07rem; }
+.lesson-choice li + li { margin-top: 3px; }
+.lesson-choice li::marker { color: var(--accent); font-weight: 750; }
+.lesson-explanation {
+  padding: 12px 16px;
+  background: #122d3c;
+  border-left: 4px solid var(--accent-button);
+  border-radius: 4px 8px 8px 4px;
+  margin-top: 13px;
+}
+.lesson-explanation p { margin-top: 4px; font-size: clamp(.97rem, 1.32vw, 1.12rem); line-height: 1.5; }
+.lesson-explanation + .panel { margin-top: 12px; }
+.definition-slide .slide-head p { color: #e6f5ff; font-size: clamp(1.1rem, 2vw, 1.41rem); }
+.definition-card { border-top: 3px solid #4aa6cd; }
+.definition-card h2 { color: #bcefff; font-size: 1.1rem; margin-bottom: 6px; }
+.definition-card p { font-size: 1rem; }
+.definition-example { background: #142d40; padding: 11px 14px; border-radius: 7px; }
+.extra-options { padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; background: #101f2f; }
+.extra-options summary { cursor: pointer; color: #bedaee; font-size: .86rem; font-weight: 650; }
+.extra-options[open] > :not(summary) { margin-top: 9px; }
+.slide-source { color: var(--muted); margin-top: 12px; font-size: .79rem; }
+.box, .status, .note { border-radius: 9px; padding: 11px 13px; background: var(--surface); border: 1px solid var(--border); }
+.box p { font-size: .92rem; }
+.box h3 { margin: 0 0 4px; }
+.status { background: #112d3d; border-color: #28526b; font-size: .93rem; color: #e1f6ff; }
+.note { font-size: .86rem; color: var(--muted); }
+.flow { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 8px; }
+.flow-cell { background: #142236; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.flow-cell.active { background: var(--accent-surface); border-color: #3f91ad; box-shadow: inset 0 -2px #4cb4d8; }
+.flow-cell strong { display: block; }
+.flow-cell > span { display: block; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+.flow-cell .strip { margin-top: 5px; }
+.chip { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-weight: 750; padding: 4px 8px; }
+.tone-0 { background: #47bce9; color: #061b2b; }
+.tone-1 { background: #eac56d; color: #271d14; }
+.tone-2 { background: #61c8a7; color: #09261e; }
+.tone-3 { background: #ce91d7; color: #25112b; }
+.tone-4 { background: #97a9ff; color: #182042; }
+.tone-5 { background: #eda284; color: #341b15; }
+.tone-6 { background: #acc1d7; color: #17253a; }
+.tone-7 { background: #e494bc; color: #302132; }
+.entity-choice { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.entity-key { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.entity-choice[aria-pressed="true"] { box-shadow: inset 0 -2px #4197b7; }
+.diagram-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.process-envelope {
+  align-content: start;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  min-width: 0;
+  border: 1px solid #5185a9;
+  border-radius: 8px;
+  background: repeating-linear-gradient(138deg, #6e9bb314 0 1px, transparent 1px 8px), #0d1b29;
+}
+.process-envelope h3 { color: #a9e5ff; margin: 0; }
+.process-resources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.process-part { padding: 5px 7px; min-height: 32px; background: #102235; border-color: #3d6889; }
+.process-part-reference { display: grid; place-items: center; padding: 5px 7px; min-height: 32px; border: 1px solid #3d6889; border-radius: 8px; font-size: .89rem; background: #102235; }
+.thread-envelopes { display: grid; gap: 6px; }
+.thread-envelopes.many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.thread-envelope {
+  display: grid;
+  gap: 6px;
+  background: #142234;
+  padding: 7px 8px;
+  border: 1px solid #8e716d;
+  border-radius: 6px;
+}
+.thread-envelope.thread-observed { border-color: #eda284; box-shadow: inset 0 0 0 1px #eda28440; }
+.thread-envelope strong { font-size: .86rem; color: #ffd1bc; }
+.thread-parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.memory-lab {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-areas: "map controls";
+  gap: 15px;
+  align-items: start;
+}
+.memory-map { grid-area: map; }
+.memory-controls { grid-area: controls; }
+.memory-controls .lesson-explanation { margin-top: 0; }
+.memory-controls .lesson-explanation p { margin-top: 0; }
+.memory-moments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.memory-moment { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; }
+.memory-moment[aria-current="step"] { background: var(--accent-surface); border-color: #58acd1; }
+.memory-moment > span { font-size: .8rem; color: var(--muted); }
+.memory-moment > strong { font-size: .98rem; }
+.address-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px; }
+.address-box { padding: 4px; display: grid; gap: 3px; border: 1px solid #5986a9; background: #0b1624; }
+.address-row:first-child .address-box { border-radius: 7px 7px 0 0; }
+.address-user .address-box { border-radius: 0 0 7px 7px; border-top: 0; }
+.address-bracket {
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  border-left: 1px solid #76acd0;
+  background: linear-gradient(#76acd0, #76acd0) left top / 6px 1px no-repeat, linear-gradient(#76acd0, #76acd0) left bottom / 6px 1px no-repeat;
+  color: #b0d6ee;
+  font-size: .81rem;
+}
+.memory-region {
+  background: #192a3d;
+  border: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 0;
+  text-align: left;
+  gap: 5px 10px;
+  flex-wrap: wrap;
+  font-size: .86rem;
+  border-radius: 4px;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+.memory-region > span { font-size: .74rem; color: #bfd6e9; }
+.memory-kernel { min-height: 34px; background: #253948; }
+.memory-group { display: grid; gap: 3px; }
+.memory-group + .memory-group { margin-top: 4px; }
+.memory-group h3 { margin: 2px 7px; color: var(--muted); font-size: .82rem; }
+.memory-stack { border-color: #816f68; }
+.memory-stack.is-new { border-color: #6acfff; background: var(--accent-surface); color: #e9f8ff; }
+.memory-region .memory-new-tag {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--accent-button);
+  color: var(--text-on-accent);
+  font-weight: 750;
+}
+.mapping-process { gap: 0; }
+.mapping-process h3 { margin-bottom: 7px; }
+.mapping-layer { padding-inline: 4px; }
+.mapping-nodes { display: grid; grid-template-columns: repeat(var(--nodes), minmax(0, 1fr)); gap: 3px; }
+.mapping-port { display: flex; align-items: center; flex-direction: column; min-width: 0; }
+.mapping-node {
+  display: grid;
+  place-items: center;
+  width: min(49px, 100%);
+  min-height: 35px;
+  border: 1px solid #668cae;
+  border-radius: 50%;
+  font: 720 .83rem var(--mono);
+  padding: 4px;
+  background: #112338;
+}
+.mapping-wire { height: 15px; width: 1px; background: #6c94af; }
+.mapping-wire.lit { background: var(--accent); box-shadow: 0 0 4px #75dbff9c; }
+.mapping-library { text-align: center; color: #ddf3ff; border: 1px solid #5f8daa; background: #1b3b51; font-size: .76rem; }
+.mapping-kernel { border-top: 1px dashed #7b9db7; background: #1c2b3480; border-radius: 0 0 5px 5px; }
+.mapping-kernel .lit.kernel-node { background: #163f56; border-color: var(--accent); }
+.mapping-caption { color: #b8d9ef; font-size: .77rem; padding-block: 4px; }
+.sequence-scroll { min-width: 0; overflow-x: auto; border: 1px solid #345269; border-radius: 8px; background: #0a1624; }
+.sequence-chart { min-width: 590px; }
+.sequence-head, .sequence-row { display: grid; grid-template-columns: 58px repeat(5, minmax(0, 1fr)); align-items: stretch; }
+.sequence-head { background: #15293c; border-bottom: 1px solid #315169; }
+.sequence-head strong { text-align: center; padding: 8px 2px; font-size: .85rem; }
+.sequence-time { align-self: center; padding-left: 6px; font-size: .7rem; white-space: nowrap; }
+.sequence-row { min-height: 43px; border-bottom: 1px solid #223246; }
+.sequence-row:last-child { border-bottom: 0; }
+.sequence-row.current { background: #15364b; }
+.sequence-step { grid-area: 1/1; align-self: center; justify-self: center; min-width: 29px; padding: 3px; min-height: 27px; font-size: .8rem; }
+.sequence-step[aria-current="step"] { background: var(--accent-button); border-color: #a8e6ff; color: var(--text-on-accent); }
+.lifeline { grid-row: 1; justify-self: center; width: 1px; border-left: 1px dashed #6d8ba5; }
+.sequence-hop {
+  grid-row: 1;
+  z-index: 1;
+  align-self: center;
+  position: relative;
+  min-width: 0;
+  margin-inline: calc(50% / var(--span));
+  color: #beddf2;
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+.sequence-hop b { font: 650 .78rem var(--mono); }
+.sequence-hop i { position: relative; align-self: center; height: 1px; background: currentColor; }
+.sequence-hop i::after { position: absolute; content: ''; right: 0; top: -3px; width: 6px; height: 6px; border-right: 1px solid currentColor; border-top: 1px solid currentColor; transform: rotate(45deg); }
+.sequence-hop.leftward i::after { left: 0; right: auto; transform: rotate(225deg); }
+.sequence-hop.stationary { margin-inline: 0; justify-self: center; background: #16283c; border: 1px solid #638ba9; border-radius: 5px; padding: 3px 6px; }
+.sequence-hop.stationary i { display: none; }
+.sequence-row.current .sequence-hop { color: #b6f0ff; }
+.sequence-row.future .sequence-hop { color: #8ca3b9; }
+.editor-viz { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(215px, 1fr); gap: 11px; align-items: stretch; }
+.editor-window { background: #0b1724; border: 1px solid #345269; border-radius: 9px; overflow: hidden; }
+.editor-titlebar { padding: 9px 14px; background: #172c40; border-bottom: 1px solid #345269; }
+.editor-titlebar strong { font-family: var(--mono); font-size: .92rem; }
+.editor-sheet { min-height: 133px; margin: 0; padding: 15px 18px 15px 42px; font-family: var(--mono); font-size: .99rem; color: #e9f6ff; }
+.editor-sheet li + li { margin-top: 7px; }
+.editor-sheet li::marker { color: #83aac6; font-size: .86em; }
+.editor-flag { color: #fff2ce; background: #785027; border-radius: 3px; padding: 0 2px; text-decoration: underline wavy #ffb871; }
+.editor-controls { display: grid; align-content: start; gap: 8px; }
+.editor-controls button { text-align: left; }
+.editor-controls h3 { margin-bottom: 0; }
+.state-route { display: grid; grid-template-columns: repeat(var(--state-count), minmax(0, 1fr)); gap: 7px; }
+.state-node { position: relative; background: #132235; border: 1px solid var(--border); border-radius: 8px; padding: 9px; min-width: 0; }
+.state-node b { display: block; font-size: .87rem; }
+.state-node small { font: 650 .7rem var(--mono); }
+.state-node[aria-current="step"] { background: #1a4156; color: #e7fbff; border-color: #60c2eb; }
+.state-node[aria-current="step"] small { color: var(--accent); }
+.state-node.reached { border-color: #38617a; }
+.state-detail h3 { color: var(--accent); }
+.state-detail .tri { margin-block: 9px; }
+.state-detail .flow-cell { padding: 7px 10px; }
+.state-detail .status { margin-top: 0; }
+.idle { background: repeating-linear-gradient(135deg,#33475a 0 6px,#293b4b 6px 9px); color: #ecf6ff; }
+.switch { background: repeating-linear-gradient(135deg,#d5af63 0 7px,#efcb7a 7px 12px); color: #281e13; }
+.metric { border-radius: 8px; border: 1px solid var(--border); background: #142638; padding: 9px 11px; min-width: 0; }
+.metric strong { display: block; font: 750 clamp(1.13rem, 2.25vw, 1.76rem)/1.14 var(--body); color: var(--accent); overflow-wrap: anywhere; }
+.metric span { display: block; font-size: .8rem; color: var(--muted); margin-top: 4px; }
+.grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; }
+.time-scroll, .table-scroll { overflow-x: auto; min-width: 0; }
+.time-plot { width: 100%; padding: 2px 11px 0; min-width: var(--min-chart, 280px); }
+.track { height: 42px; position: relative; border-radius: 6px; background: #0c1521; overflow: hidden; border: 1px solid #273e52; }
+.track.compact { height: 35px; }
+.segment {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  height: 100%;
+  border-right: 1px solid #08112060;
+  font: 750 .83rem var(--body);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.segment.active-segment { outline: 3px solid #f2fbff; outline-offset: -3px; z-index: 1; }
+.dimmed-segment { opacity: .45; }
+.focused-segment { outline: 2px solid #d3f4ff; outline-offset: -2px; z-index: 1; }
+.time-axis { position: relative; height: 24px; margin-top: 3px; color: var(--muted); }
+.time-axis span { position: absolute; top: 0; transform: translateX(-50%); font: .76rem var(--mono); }
+table { border-collapse: collapse; width: 100%; font-size: .86rem; font-variant-numeric: tabular-nums; }
+caption { text-align: left; color: var(--muted); font-weight: 650; padding-bottom: 6px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid #273c50; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+th { background: #182d42; font-weight: 700; white-space: nowrap; }
+tr.focus-row td { background: #173950; }
+label.field { display: grid; gap: 4px; font-size: .86rem; font-weight: 650; min-width: 0; }
+select, input[type="number"], input[type="text"] {
+  border: 1px solid #37526d;
+  background: #0d1928;
+  border-radius: 7px;
+  padding: 6px 7px;
+  min-height: 36px;
+  width: 100%;
+}
+input[type="number"] { min-width: 54px; }
+table input[type="number"] { max-width: 76px; }
+.table-action { padding: 3px 8px; min-height: 32px; }
+.lab-settings { display: grid; grid-template-columns: 1.4fr 1fr .9fr; gap: 8px; }
+.lab-layout { display: grid; gap: 16px; align-items: start; }
+.lab-layout > * { min-width: 0; }
+.inspector { border-left: 3px solid #479bc3; }
+.inspector h3, .compare-results h3 { margin: 0; }
+.inspector progress { width: 100%; height: 10px; accent-color: var(--accent-button); }
+.inspector .dials { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 6px; }
+.inspector .metric strong { font-size: 1.22rem; }
+.lab-form .entity-choice { min-height: 32px; padding: 4px 7px; }
+.lab-form th, .lab-form td { padding-inline: 5px; }
+.workload { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
+.workload span { display: grid; place-items: center; min-height: 26px; border-radius: 5px; font-size: .77rem; font-weight: 750; }
+.workload .focused-unit { outline: 2px solid #e8faff; outline-offset: -2px; }
+.workload .dimmed-unit { opacity: .52; }
+.core-focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pending { background: #22364b; color: #d3e3f0; }
+.compare-bars { display: grid; gap: 6px; }
+.measure { display: grid; grid-template-columns: minmax(80px, 132px) minmax(0, 1fr) 75px; gap: 9px; align-items: center; font-size: .85rem; }
+.measure-track { height: 14px; border-radius: 4px; overflow: hidden; background: #24374c; }
+.measure-track i { display: block; height: 100%; }
+.measure strong { text-align: right; }
+.inline-code { background: #0b1724; color: #ddf3ff; padding: 11px 13px; border-radius: 8px; font-size: .9rem; border: 1px solid var(--border); }
+.bar-bottom { position: fixed; inset: auto 0 0; z-index: 6; background: var(--bar); border-top: 1px solid var(--border); }
+.bar-bottom .bar-inner { min-height: 60px; }
+.position { display: grid; grid-template-columns: minmax(95px, max-content) auto minmax(75px, 1fr); align-items: center; gap: 12px; min-width: 0; flex: 1; max-width: 730px; }
+.position output { color: #e3f6ff; font: 750 .93rem var(--mono); white-space: nowrap; }
+.position .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress-track { background: #23374a; height: 5px; border-radius: 3px; overflow: hidden; }
+.progress-fill { width: var(--progress, 0%); height: 100%; background: linear-gradient(90deg, #3287b5, #70d5ff); transition: width .2s ease; }
+.nav-buttons { display: flex; gap: 8px; flex-shrink: 0; }
+.keyboard-hint { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+dialog { background: var(--slide); color: var(--text); border: 1px solid var(--border); border-radius: 13px; width: min(740px, calc(100% - 28px)); max-height: 85dvh; padding: 22px; }
+dialog::backdrop { background: #050b13cc; }
+dialog h2 { margin: 0; font-size: 1.72rem; }
+.terms-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 13px 0 0; }
+.terms-list > div { padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.terms-list dt { color: #c9edff; font-weight: 750; }
+.terms-list dd { margin: 4px 0 0; color: #e3edf8; font-size: .9rem; }
+.index-hint { margin-top: 3px; }
+.index-topics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-block: 12px 13px;
+}
+.index-topic {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  text-align: left;
+}
+.index-number { font: 700 .78rem var(--mono); color: var(--accent); }
+.index-tag { margin-left: auto; font-size: .75rem; color: #a9ddf6; }
+.index-group { border-top: 1px solid var(--border); padding: 11px 0; }
+.index-group h3 { margin-bottom: 8px; color: var(--accent); }
+.index-links { display: flex; flex-wrap: wrap; gap: 7px; }
+.index-links button { text-align: left; }
+.index-links button[aria-current="page"]:not(.primary) { border-color: #58afda; }
+.index-group .extra-options { margin-top: 10px; }
+.slide-enter { animation: arrive .19s ease-out; }
+@keyframes arrive { from { opacity: .66; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@media (min-width: 1010px) {
+  .lab-layout { grid-template-columns: minmax(315px, .92fr) minmax(350px, 1.08fr); }
+}
+@media (max-height: 820px) and (min-width: 681px) {
+  .stage { padding-block: 13px 12px; }
+  .slide-surface { padding: 20px 24px; }
+  .slide-head { margin-bottom: 12px; }
+  .slide-head h1 { font-size: clamp(1.9rem, 3.5vw, 2.65rem); }
+  .lesson-choice { padding-block: 8px; }
+  .lesson-explanation { padding-block: 9px; }
+  .editor-sheet { min-height: 118px; }
+  .sequence-row { min-height: 37px; }
+  .stack { gap: 10px; }
+  .memory-lab .memory-region { min-height: 25px; padding-block: 1px; }
+  .memory-lab .memory-kernel { min-height: 31px; }
+}
+@media (max-width: 930px) {
+  .frame { width: calc(100% - 30px); }
+  .keyboard-hint { display: none; }
+  .lab-settings { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 680px) {
+  body { padding-bottom: 74px; }
+  .stage { padding-top: 13px; align-items: start; }
+  .brand { font-size: .9rem; }
+  .top-actions button { font-size: .78rem; padding: 6px 8px; }
+  .editor-viz { grid-template-columns: 1fr; }
+  .terms-list { grid-template-columns: 1fr; }
+  .diagram-pair, .memory-lab { grid-template-columns: minmax(0, 1fr); }
+  .memory-lab { grid-template-areas: "controls" "map"; }
+  .lesson-choice { grid-template-columns: 1fr; }
+  .state-route { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .position { grid-template-columns: auto minmax(26px, 1fr); gap: 6px; }
+  .position .small { display: none; }
+}
+@media (max-width: 460px) {
+  .frame { width: calc(100% - 18px); }
+  .bar-inner { gap: 7px; }
+  .top-actions { gap: 4px; }
+  .brand-name { display: none; }
+  .split, .tri { grid-template-columns: 1fr; }
+  .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .state-route { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workload { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .nav-buttons { gap: 5px; }
+  .nav-buttons button { padding-inline: 7px; font-size: .8rem; }
+  .panel { padding: 11px; }
+  .index-topics { grid-template-columns: 1fr; }
+  .address-row { grid-template-columns: minmax(0, 1fr) 59px; gap: 4px; }
+  .address-bracket { font-size: .72rem; padding-left: 5px; }
+  .thread-envelopes.many { grid-template-columns: 1fr; }
+  dialog { padding: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+  </style>
+</head>
+<body>
+  <header class="bar-top">
+    <div class="frame bar-inner">
+      <div class="brand"><span class="brand-icon" aria-hidden="true">SO</span><span class="brand-name">Sistemas Operativos</span></div>
+      <div class="top-actions">
+        <button id="open-index" type="button">Temario</button>
+        <button id="toggle-script" type="button" aria-controls="lesson-choice lesson-explanation" aria-pressed="true">Indicaciones</button>
+        <button id="fullscreen" type="button">Pantalla completa</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="slide" class="frame stage"></main>
+
+  <footer class="bar-bottom">
+    <div class="frame bar-inner">
+      <div class="position">
+        <span class="small" id="route-name"></span>
+        <output id="position" aria-label="Diapositiva actual"></output>
+        <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progress"></div></div>
+      </div>
+      <span class="keyboard-hint">← → o Espacio para avanzar</span>
+      <nav class="nav-buttons" aria-label="Diapositivas">
+        <button type="button" id="previous">← Anterior</button>
+        <button type="button" class="primary" id="next">Siguiente →</button>
+      </nav>
+    </div>
+  </footer>
+
+  <dialog id="index" aria-labelledby="index-title">
+    <div class="between">
+      <h2 id="index-title">Temario</h2>
+      <form method="dialog"><button type="submit">Cerrar</button></form>
+    </div>
+    <p class="small index-hint">Elige un tema y luego una diapositiva.</p>
+    <div class="index-topics" id="index-topics" role="group" aria-label="Todos los temas"></div>
+    <section class="index-group" id="index-slides" aria-labelledby="index-topic-title"></section>
+  </dialog>
+
+  <dialog id="slide-terms" aria-labelledby="terms-title" aria-describedby="terms-slide-title">
+    <div class="between">
+      <h2 id="terms-title">Términos</h2>
+      <form method="dialog"><button type="submit" autofocus>Cerrar</button></form>
+    </div>
+    <p class="small index-hint" id="terms-slide-title"></p>
+    <dl class="terms-list" id="terms-list"></dl>
+  </dialog>
+
+  <script>
+(function () {
+'use strict';
+const pick = (root, selector) => root.querySelector(selector);
+const picks = (root, selector) => Array.from(root.querySelectorAll(selector));
+const numberES = new Intl.NumberFormat('es-EC', { maximumFractionDigits: 2 });
+const fmt = value => numberES.format(value);
+const ms = value => `${fmt(value)} ms`;
+const chip = (label, tone) => `<span class="chip tone-${tone}">${label}</span>`;
+const metric = (value, label) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`;
+
+function entityButton(id, tone, selected, attribute = 'data-entity') {
+  return `<button class="entity-choice" type="button" ${attribute}="${id}" aria-pressed="${selected}">
+    <span class="entity-key tone-${tone}" aria-hidden="true"></span>${id}
+  </button>`;
+}
+
+function setTalk(root, spoken) {
+  pick(root, '[data-say]').textContent = spoken;
+}
+
+function describe(root, detail, spoken = detail) {
+  pick(root, '[data-status]').textContent = detail;
+  setTalk(root, spoken);
+}
+
+const baseJobs = [
+  { id: 'P1', arrival: 0, burst: 8, priority: 3 },
+  { id: 'P2', arrival: 1, burst: 4, priority: 1 },
+  { id: 'P3', arrival: 2, burst: 2, priority: 2 }
+];
+const reversedJobs = [
+  { id: 'P1', arrival: 2, burst: 8, priority: 3 },
+  { id: 'P2', arrival: 0, burst: 4, priority: 1 },
+  { id: 'P3', arrival: 1, burst: 2, priority: 2 }
+];
+const idleJobs = [
+  { id: 'P1', arrival: 2, burst: 3, priority: 3 },
+  { id: 'P2', arrival: 7, burst: 3, priority: 1 },
+  { id: 'P3', arrival: 8, burst: 2, priority: 2 }
+];
+
+const policies = {
+  fcfs: 'FCFS',
+  sjf: 'SJF',
+  srtf: 'SRTF',
+  rr: 'Round Robin',
+  priority: 'Prioridad sin expropiar',
+  priorityP: 'Prioridad expropiativa'
+};
+const policyOptions = Object.entries(policies)
+  .map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
+const cloneJobs = jobs => jobs.map(job => ({ ...job }));
+
+function schedule(workload, policy, quantum = 2, switchCost = 0) {
+  const jobs = workload.map((job, order) => ({
+    ...job, order, remaining: job.burst, first: null, finish: null
+  }));
+  const byArrival = (a, b) => a.arrival - b.arrival || a.order - b.order;
+  const arrivals = [...jobs].sort(byArrival);
+  const rr = policy === 'rr';
+  const preemptive = policy === 'srtf' || policy === 'priorityP';
+  const queue = [];
+  const segments = [];
+  let time = 0;
+  let arrivalIndex = 0;
+  let finished = 0;
+  let sliceLeft = 0;
+  let running = null;
+  let previous = null;
+  let sliceNumber = 0;
+  let switches = 0;
+
+  function enqueueArrivals() {
+    while (arrivalIndex < arrivals.length && arrivals[arrivalIndex].arrival <= time) {
+      queue.push(arrivals[arrivalIndex++]);
+    }
+  }
+
+  function append(kind, start, end, job = null) {
+    const last = segments.at(-1);
+    const id = job?.id ?? null;
+    const label = job ? job.id : kind === 'idle' ? 'Libre' : 'Cambio';
+    if (last?.kind === kind && last.id === id && last.slice === sliceNumber && last.end === start) {
+      last.end = end;
+    } else {
+      segments.push({ kind, id, start, end, label, tone: job?.order ?? 0, slice: sliceNumber });
+    }
+  }
+
+  function prefer(a, b) {
+    let difference = 0;
+    if (policy === 'sjf') difference = a.burst - b.burst;
+    if (policy === 'srtf') difference = a.remaining - b.remaining;
+    if (policy === 'priority' || policy === 'priorityP') difference = a.priority - b.priority;
+    if (difference !== 0) return difference;
+    if (a === running) return -1;
+    if (b === running) return 1;
+    return byArrival(a, b);
+  }
+
+  while (finished < jobs.length) {
+    let candidate = running;
+    if (rr) {
+      enqueueArrivals();
+      if (running && sliceLeft === 0) {
+        queue.push(running);
+        running = null;
+      }
+      candidate = running ?? queue.shift();
+    } else if (!running || preemptive) {
+      const ready = jobs.filter(job => job.arrival <= time && job.remaining > 0);
+      candidate = ready.sort(prefer)[0];
+    }
+
+    if (!candidate) {
+      const nextArrival = jobs.find(job => job.arrival > time);
+      const resume = nextArrival ? Math.min(...jobs.filter(job => job.arrival > time).map(job => job.arrival)) : time;
+      if (resume <= time) throw new Error('La planificación no pudo avanzar.');
+      append('idle', time, resume);
+      time = resume;
+      previous = running = null;
+      continue;
+    }
+
+    if (candidate !== running) {
+      sliceNumber++;
+      sliceLeft = quantum;
+    }
+    if (previous && previous !== candidate) {
+      switches++;
+      if (switchCost) {
+        append('switch', time, time + switchCost);
+        time += switchCost;
+      }
+    }
+
+    running = candidate;
+    previous = candidate;
+    running.first ??= time;
+    append('work', time, time + 1, running);
+    time++;
+    sliceLeft--;
+    running.remaining--;
+    if (running.remaining === 0) {
+      running.finish = time;
+      running = null;
+      finished++;
+    }
+  }
+
+  const rows = jobs.map(job => ({
+    ...job,
+    turn: job.finish - job.arrival,
+    wait: job.finish - job.arrival - job.burst,
+    response: job.first - job.arrival
+  }));
+  const avg = key => rows.reduce((sum, job) => sum + job[key], 0) / rows.length;
+  const busy = jobs.reduce((sum, job) => sum + job.burst, 0);
+  return {
+    end: time, segments, rows, switches,
+    wait: avg('wait'), turn: avg('turn'), response: avg('response'),
+    utilization: 100 * busy / time, throughput: rows.length / time
+  };
+}
+
+function timeline(segments, end, options = {}) {
+  const { compact = false, active = -1, units = 'ms', name = 'Línea de tiempo', focusId = null } = options;
+  const block = (segment, i) => {
+    const css = segment.kind === 'work' ? `tone-${segment.tone}` : segment.kind;
+    const details = `${segment.label}, de ${segment.start} a ${segment.end} ${units}`;
+    const width = 100 * (segment.end - segment.start) / end;
+    const highlight = focusId && segment.kind === 'work'
+      ? segment.id === focusId ? 'focused-segment' : 'dimmed-segment' : '';
+    return `<span class="segment ${css} ${highlight} ${i === active ? 'active-segment' : ''}"
+      style="left:${100 * segment.start / end}%;width:${width}%"
+      title="${details}">${width >= 3 || end < 34 ? segment.label : ''}</span>`;
+  };
+  const tickStep = end <= 12 ? 1 : end <= 24 ? 2 : Math.ceil(end / 10);
+  const ticks = [0];
+  for (let t = tickStep; t <= end - Math.ceil(tickStep / 2); t += tickStep) ticks.push(t);
+  ticks.push(end);
+  return `<div class="time-scroll"><div class="time-plot" style="--min-chart:${Math.max(280, end * 10)}px">
+    <div role="img" aria-label="${name}${focusId ? ', con ' + focusId + ' destacado' : ''}, ${segments.length ? segments.map(s => `${s.label} de ${s.start} a ${s.end}`).join(', ') : 'sin tramos mostrados'}"
+      class="track ${compact ? 'compact' : ''}">${segments.map(block).join('')}</div>
+    <div aria-hidden="true" class="time-axis">${ticks.map(t => `<span style="left:${100 * t / end}%">${t}</span>`).join('')}</div>
+  </div></div>`;
+}
+
+function workSegments(ids) {
+  return ids.map((id, i) => ({
+    id, label: id, kind: 'work', start: i, end: i + 1,
+    tone: Number(id.slice(-1)) - 1
+  }));
+}
+
+function setPressed(root, selector, key, value) {
+  picks(root, selector).forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset[key] === String(value)));
+  });
+}
+
+function useChoice(root, selector, key, onChoose) {
+  picks(root, selector).forEach(button => {
+    button.addEventListener('click', () => onChoose(button.dataset[key]));
+  });
+}
+
+function stepStory(root, scenes, render, speak) {
+  let index = 0;
+  const next = pick(root, '[data-step]');
+  const back = pick(root, '[data-back]');
+  const restart = pick(root, '[data-reset]');
+  const container = pick(root, '[data-scene]');
+  function draw() {
+    container.innerHTML = render(scenes[index], index);
+    if (speak) setTalk(root, speak(scenes[index], index));
+    next.disabled = index >= scenes.length - 1;
+    next.textContent = next.disabled ? 'Recorrido completo' : scenes[index].action ?? 'Siguiente paso';
+    if (back) back.disabled = index === 0;
+    pick(root, '[data-scene-count]').textContent = `Paso ${index + 1} de ${scenes.length}`;
+  }
+  next.onclick = () => { index = Math.min(index + 1, scenes.length - 1); draw(); };
+  restart.onclick = () => { index = 0; draw(); };
+  if (back) back.onclick = () => { index = Math.max(index - 1, 0); draw(); };
+  draw();
+}
+
+function storyBoard({ showPrevious = true } = {}) {
+  return `<div class="stack">
+    <div data-scene aria-live="polite"></div>
+    <div class="between">
+      <div class="actions">
+        <button type="button" data-step class="primary">Siguiente paso</button>
+        ${showPrevious ? '<button type="button" data-back>Paso anterior</button>' : ''}
+        <button type="button" data-reset>Reiniciar recorrido</button>
+      </div>
+      <span class="small" data-scene-count></span>
+    </div>
+  </div>`;
+}
+
+
+function mountDispatch(root) {
+  const tokens = value => value.startsWith('P')
+    ? value.split(' → ').map(id => chip(id, id === 'P1' ? 0 : 1)).join(' ')
+    : value;
+  function choose(first) {
+    const other = first === 'P1' ? 'P2' : 'P1';
+    setPressed(root, '[data-first]', 'first', first);
+    const events = [
+      { ready: first + ' → ' + other, cpu: 'Libre', waiting: 'Ninguno', action: 'Asignar CPU', why: `${first} está primero en la cola.`, talk: 'Los procesos preparados ya tienen trabajo y solo esperan un turno.' },
+      { ready: other, cpu: first, waiting: 'Ninguno', action: 'Pedir lectura', why: `${first} toma la CPU. ${other} queda preparado.`, talk: `${first} recibe el turno porque está primero. ${other} espera en la cola.` },
+      { ready: 'Vacía', cpu: other, waiting: first, action: 'Completar lectura', why: `${first} queda bloqueado. ${other} toma la CPU.`, talk: `${first} está bloqueado porque espera los datos del archivo. Mientras tanto, ${other} usa el procesador.` },
+      { ready: first, cpu: other, waiting: 'Ninguno', action: 'Ceder CPU', why: `Llegaron los datos de ${first}.`, talk: `Ya llegaron los datos. ${first} vuelve a la lista de preparados y puede trabajar cuando reciba otro turno.` },
+      { ready: 'Vacía', cpu: first, waiting: 'Ninguno', why: `${other} cede la CPU.`, talk: `${other} deja libre el procesador. ${first} lo recibe y continúa desde donde se detuvo.` }
+    ];
+    stepStory(root, events, event => `<div class="stack">
+      <div class="flow" aria-label="Estados de los procesos">
+        <div class="flow-cell ${event.ready === 'Vacía' ? '' : 'active'}"><strong>Preparados</strong><div class="strip">${tokens(event.ready)}</div></div>
+        <div class="flow-cell ${event.cpu === 'Libre' ? '' : 'active'}"><strong>En CPU</strong><div class="strip">${tokens(event.cpu)}</div></div>
+        <div class="flow-cell ${event.waiting === 'Ninguno' ? '' : 'active'}"><strong>Bloqueados por E/S</strong><div class="strip">${tokens(event.waiting)}</div></div>
+      </div>
+      <p class="status">${event.why}</p>
+    </div>`, event => event.talk);
+  }
+  useChoice(root, '[data-first]', 'first', choose);
+  choose('P1');
+}
+
+function mountPreemption(root) {
+  const jobs = [
+    { id: 'P1', arrival: 0, burst: 6, priority: 2 },
+    { id: 'P2', arrival: 2, burst: 2, priority: 1 }
+  ];
+  function draw(choice) {
+    const result = schedule(jobs, choice);
+    setPressed(root, '[data-policy]', 'policy', choice);
+    pick(root, '[data-demo]').innerHTML = timeline(result.segments, result.end, { name: 'Ejecución de P1 y P2' });
+    pick(root, '[data-stats]').innerHTML = metric(ms(result.rows[1].first), 'Empieza P2')
+      + metric(ms(result.rows[1].response), 'Respuesta de P2');
+    describe(root, choice === 'srtf'
+      ? 'En t = 2, P2 toma la CPU. A P1 le faltan 4 ms. P2 necesita 2 ms.'
+      : 'En t = 2, P2 entra a la cola. Empieza en t = 6, cuando P1 libera la CPU.',
+      choice === 'srtf'
+        ? 'P2 necesita 2 ms y a P1 le quedan 4 ms. La regla permite interrumpir a P1 y darle el turno a P2.'
+        : 'P2 llega en el instante 2 y empieza en el 6. Espera 4 ms mientras termina P1.');
+  }
+  useChoice(root, '[data-policy]', 'policy', draw);
+  draw('fcfs');
+}
+
+function mountMetrics(root) {
+  const result = schedule(baseJobs, 'fcfs');
+  let selectedId = 'P2';
+  let displayedMetric = 'wait';
+  const definitions = {
+    wait: ['Espera', 'first', 'Tiempo acumulado en la cola de preparados. En FCFS este proceso solo espera antes de su primer turno.'],
+    response: ['Respuesta', 'first', 'Tiempo desde la llegada hasta el primer uso de CPU.'],
+    turn: ['Retorno', 'finish', 'Tiempo desde la llegada hasta que termina el proceso.']
+  };
+  function draw() {
+    const job = result.rows.find(item => item.id === selectedId);
+    const [label, endKey, explanation] = definitions[displayedMetric];
+    const value = job[displayedMetric];
+    setPressed(root, '[data-entity]', 'entity', selectedId);
+    setPressed(root, '[data-metric]', 'metric', displayedMetric);
+    pick(root, '[data-demo]').innerHTML = timeline(result.segments, result.end, { name: 'Ejecución con FCFS', focusId: selectedId });
+    pick(root, '[data-job-times]').innerHTML = metric(ms(job.arrival), 'Llega ' + job.id)
+      + metric(ms(job.first), 'Empieza ' + job.id) + metric(ms(job.finish), 'Termina ' + job.id);
+    pick(root, '[data-value]').innerHTML = metric(`${job[endKey]} − ${job.arrival} = ${ms(value)}`, label + ' de ' + job.id);
+    const interval = endKey === 'finish' ? 'termina' : 'empieza';
+    const measure = displayedMetric === 'turn' ? 'el retorno' : 'la ' + label.toLowerCase();
+    describe(root, explanation, `${job.id} llega en ${job.arrival} y ${interval} en ${job[endKey]}. La diferencia da ${measure}: ${ms(value)}.`);
+  }
+  pick(root, '[data-metric-jobs]').innerHTML = result.rows.map(job => entityButton(job.id, job.order, job.id === selectedId)).join('');
+  useChoice(root, '[data-entity]', 'entity', id => { selectedId = id; draw(); });
+  useChoice(root, '[data-metric]', 'metric', key => { displayedMetric = key; draw(); });
+  draw();
+}
+
+function mountConvoy(root) {
+  function draw(order) {
+    const result = schedule(order === 'first' ? baseJobs : reversedJobs, 'fcfs');
+    setPressed(root, '[data-order]', 'order', order);
+    pick(root, '[data-demo]').innerHTML = timeline(result.segments, result.end, { name: 'FCFS y orden de llegada' });
+    pick(root, '[data-stats]').innerHTML = metric(ms(result.wait), 'Espera media')
+      + metric(ms(result.end), 'Tiempo total')
+      + metric(ms(result.rows[2].wait), 'Espera de P3');
+    describe(root, order === 'first'
+      ? 'P3 llega en el milisegundo 2 y empieza en el 12. P1 y P2 llegaron antes.'
+      : 'P2 y P3 llegan antes que P1. El nuevo orden les permite terminar antes.',
+      order === 'first'
+        ? `P3 pasa ${fmt(result.rows[2].wait)} milisegundos en la cola. Tiene que esperar a que P1 y P2 terminen su trabajo.`
+        : `Ahora P3 espera ${fmt(result.rows[2].wait)} milisegundos. Llegó antes que P1, así que recibe su turno en cuanto termina P2.`);
+  }
+  useChoice(root, '[data-order]', 'order', draw);
+  draw('first');
+}
+
+function mountShort(root) {
+  function draw(mode) {
+    const result = schedule(baseJobs, mode);
+    const during = result.segments.findIndex(seg => seg.start <= 2 && seg.end > 2);
+    setPressed(root, '[data-policy]', 'policy', mode);
+    pick(root, '[data-demo]').innerHTML = timeline(result.segments, result.end, { active: during, name: policies[mode] });
+    pick(root, '[data-stats]').innerHTML = metric(result.segments[during].label, 'CPU en t = 2')
+      + metric(ms(result.rows[2].first), 'Empieza P3')
+      + metric(ms(result.wait), 'Espera media');
+    describe(root, mode === 'sjf'
+      ? 'P1 sigue hasta t = 8. En ese momento, elige P3, cuya ráfaga es de 2 ms.'
+      : 'P2 tomó la CPU en t = 1. En t = 2 le quedan 3 ms, así que la llegada de P3, que necesita 2 ms, lo interrumpe.',
+      mode === 'sjf'
+        ? 'P1 conserva la CPU hasta terminar. SJF elige el trabajo más corto cuando el núcleo queda libre.'
+        : 'P3 empieza en el instante 2. Necesita 2 ms y a P2 le quedan 3 ms, por eso SRTF elige P3.');
+  }
+  useChoice(root, '[data-policy]', 'policy', draw);
+  draw('sjf');
+}
+
+function mountRR(root) {
+  const input = pick(root, '[data-quantum]');
+  function draw(value) {
+    input.value = value;
+    setPressed(root, '[data-set-q]', 'setQ', value);
+    const quantum = Number(value);
+    const result = schedule(baseJobs, 'rr', quantum);
+    pick(root, '[data-demo]').innerHTML = timeline(result.segments, result.end, { name: 'Turnos de Round Robin' });
+    pick(root, '[data-stats]').innerHTML = metric(ms(result.response), 'Tiempo medio hasta empezar')
+      + metric(result.switches, 'Cambios de proceso');
+    describe(root, quantum >= 8
+      ? 'Los tres procesos terminan en el primer turno que reciben.'
+      : 'P1 usa su primer turno y vuelve al final de la cola.',
+      quantum >= 8 ? 'El turno alcanza para que cada proceso termine su trabajo, así que usan la CPU en su orden de llegada.'
+        : `P1 necesita 8 milisegundos de CPU. Tras su turno de ${quantum} ms, vuelve al final de la cola con ${8 - quantum} ms de trabajo pendiente.`);
+  }
+  useChoice(root, '[data-set-q]', 'setQ', draw);
+  input.onchange = () => draw(input.value);
+  draw(2);
+}
+
+function mountAging(root) {
+  let aging = false;
+  let turns = [];
+  let wait = 0;
+  let executed = false;
+  const step = pick(root, '[data-aging-step]');
+  const auto = pick(root, '[data-aging-five]');
+  const initialPriority = 5;
+  function draw() {
+    const effective = aging ? Math.max(1, initialPriority - wait) : initialPriority;
+    setPressed(root, '[data-aging]', 'aging', aging ? 'on' : 'off');
+    const trace = turns.map((id, i) => chip(`${i + 1}. ${id}`, id === 'P-baja' ? 2 : 0)).join('');
+    pick(root, '[data-demo]').innerHTML = `<div class="strip">${trace || '<span class="small">Todavía no se asigna ningún turno.</span>'}</div>`;
+    pick(root, '[data-stats]').innerHTML = metric(wait, 'Turnos que esperó P-baja')
+      + metric(effective, 'Prioridad efectiva de P-baja')
+      + metric(executed ? 'Sí' : 'Aún no', 'P-baja recibió CPU');
+    describe(root, executed
+      ? 'P-baja alcanzó prioridad 1. Gana el empate por llevar más tiempo esperando.'
+      : 'Cada turno llega una tarea nueva de prioridad 1. El número menor representa mayor prioridad.',
+      executed ? `P-baja consigue CPU después de ${wait} turnos. Alcanzó la prioridad 1 y gana el empate por haber llegado antes.`
+        : `P-baja lleva ${wait} turnos esperando. ${aging ? 'Su prioridad mejora con la espera.' : 'Las tareas de prioridad 1 pasan primero.'}`);
+    step.disabled = auto.disabled = executed || turns.length >= 10;
+  }
+  function turn() {
+    if (executed || turns.length >= 10) return;
+    executed = aging && initialPriority - wait <= 1;
+    turns.push(executed ? 'P-baja' : 'P-alta');
+    if (!executed) wait++;
+  }
+  function reset() {
+    turns = [];
+    wait = 0;
+    executed = false;
+    draw();
+  }
+  useChoice(root, '[data-aging]', 'aging', mode => { aging = mode === 'on'; reset(); });
+  step.onclick = () => { turn(); draw(); };
+  auto.onclick = () => { for (let i = 0; i < 5; i++) turn(); draw(); };
+  pick(root, '[data-reset]').onclick = reset;
+  draw();
+}
+
+function mountQueues(root) {
+  function draw(mode) {
+    const strict = mode === 'strict';
+    const jobs = Array.from({ length: 8 }, (_, i) => strict || (i + 1) % 4 !== 0 ? 'P1' : 'P2');
+    const segments = workSegments(jobs).map(s => ({
+      ...s, label: s.id === 'P1' ? 'Alta' : 'Fondo'
+    }));
+    setPressed(root, '[data-queues]', 'queues', mode);
+    pick(root, '[data-demo]').innerHTML = timeline(segments, 8, { units: 'turnos', name: 'Turnos asignados por cola' });
+    pick(root, '[data-stats]').innerHTML = metric(strict ? 8 : 6, 'Turnos de la cola alta')
+      + metric(strict ? 0 : 2, 'Turnos de la cola de fondo');
+    describe(root, strict
+      ? 'La cola alta siempre tiene trabajo y ocupa los ocho turnos.'
+      : 'De los ocho turnos, seis son para la cola alta y dos para la cola de fondo.',
+      strict ? 'La cola alta siempre tiene trabajo. La cola de fondo se queda esperando.'
+        : 'La cola de fondo recibe uno de cada cuatro turnos. Las dos colas avanzan.');
+  }
+  useChoice(root, '[data-queues]', 'queues', draw);
+  draw('strict');
+}
+
+function mountDeadlines(root) {
+  const jobs = [
+    { id: 'P1', arrival: 0, burst: 4, priority: 2, deadline: 7 },
+    { id: 'P2', arrival: 0, burst: 2, priority: 1, deadline: 3 }
+  ];
+  function draw(mode) {
+    const result = schedule(jobs, mode === 'deadline' ? 'priority' : 'fcfs');
+    const rows = result.rows.map(job => {
+      const met = job.finish <= job.deadline;
+      return `<tr ${met ? '' : 'class="focus-row"'}><td>${job.id}</td><td>${ms(job.burst)}</td>
+        <td>${ms(job.deadline)}</td><td>${ms(job.finish)}</td><td>${met ? 'A tiempo' : 'Fuera de plazo'}</td></tr>`;
+    }).join('');
+    setPressed(root, '[data-deadline]', 'deadline', mode);
+    pick(root, '[data-demo]').innerHTML = timeline(result.segments, 7, { name: 'Ejecución con plazos' });
+    pick(root, '[data-rows]').innerHTML = rows;
+    describe(root, mode === 'deadline'
+      ? 'P2 termina en t = 2 y P1 en t = 6. Los dos terminan antes de su plazo.'
+      : 'P2 termina en el instante seis. Su plazo era el tres.',
+      mode === 'deadline' ? 'P2 va primero y termina en el instante 2. Las dos tareas cumplen sus plazos.'
+        : 'P2 termina en el instante 6. Su plazo era el 3, así que termina tarde.');
+  }
+  useChoice(root, '[data-deadline]', 'deadline', draw);
+  draw('fcfs');
+}
+
+
+const lab = { jobs: cloneJobs(baseJobs), policy: 'fcfs', quantum: 2, cost: 0, nextId: 4 };
+
+function labConfig() {
+  return `<form class="stack-sm lab-form" data-lab-form>
+    <div class="lab-settings">
+      <label class="field">Algoritmo<select data-lab-policy>${policyOptions}</select></label>
+      <label class="field">Quantum RR (ms)<input type="number" min="1" max="20" step="1" value="2" data-lab-quantum required></label>
+      <label class="field">Cambio (ms)<input type="number" min="0" max="3" step="1" value="0" data-lab-cost required></label>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <caption>Procesos de la simulación</caption>
+        <thead><tr><th>Proceso</th><th>Llegada<br>(ms)</th><th>Ráfaga<br>(ms)</th><th>Prioridad</th><th>Quitar</th></tr></thead>
+        <tbody data-job-rows></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button type="button" data-preset="rr">Ejemplo Round Robin</button>
+      <button type="button" data-add-job>Añadir proceso</button>
+      <button type="button" data-preset="convoy">Cargar convoy</button>
+      <button type="button" data-preset="idle">Con pausas</button>
+      <button type="submit" class="primary">Preparar simulación</button>
+    </div>
+    <p class="small" data-config-note aria-live="polite"></p>
+  </form>`;
+}
+
+function labPlayback() {
+  return `<div class="stack-sm">
+    <div class="strip">
+      <strong>Proceso a observar</strong>
+      <div class="actions" data-lab-jobs role="group" aria-label="Proceso a observar"></div>
+    </div>
+    <div class="between"><h3>Diagrama de Gantt</h3><span class="small" data-lab-count></span></div>
+    <div data-lab-plot></div>
+    <p class="status" data-lab-status aria-live="polite"></p>
+    <p class="small" data-lab-decision hidden></p>
+    <div class="actions">
+      <button type="button" class="primary" data-lab-next>Avanzar tramo</button>
+      <button type="button" data-lab-play>Reproducir</button>
+      <button type="button" data-lab-finish>Ver resultado</button>
+      <button type="button" data-lab-reset>Volver a t = 0</button>
+    </div>
+    <div class="box stack-sm inspector" data-inspect-job aria-live="polite"></div>
+    <div class="stack-sm" data-lab-result hidden></div>
+  </div>`;
+}
+
+function mountLab(root) {
+  const form = pick(root, '[data-lab-form]');
+  const policy = pick(form, '[data-lab-policy]');
+  const quantum = pick(form, '[data-lab-quantum]');
+  const cost = pick(form, '[data-lab-cost]');
+  const rows = pick(form, '[data-job-rows]');
+  const add = pick(form, '[data-add-job]');
+  const status = pick(root, '[data-lab-status]');
+  const decision = pick(root, '[data-lab-decision]');
+  const next = pick(root, '[data-lab-next]');
+  const finish = pick(root, '[data-lab-finish]');
+  const play = pick(root, '[data-lab-play]');
+  const rewind = pick(root, '[data-lab-reset]');
+  const summary = pick(root, '[data-lab-result]');
+  const plot = pick(root, '[data-lab-plot]');
+  const choices = pick(root, '[data-lab-jobs]');
+  const inspector = pick(root, '[data-inspect-job]');
+  const configNote = pick(form, '[data-config-note]');
+  let draft = cloneJobs(lab.jobs);
+  let selectedId = draft[1]?.id ?? draft[0].id;
+  let result;
+  let shown = 0;
+  let clock = null;
+  let dirty = false;
+  policy.value = lab.policy;
+  quantum.value = lab.quantum;
+  cost.value = lab.cost;
+
+  function stop() {
+    if (clock !== null) clearInterval(clock);
+    clock = null;
+    play.textContent = 'Reproducir';
+  }
+
+  function drawSelection() {
+    setPressed(root, '[data-entity]', 'entity', selectedId);
+    picks(rows, '[data-row-job]').forEach(row => {
+      row.classList.toggle('focus-row', row.dataset.rowJob === selectedId);
+    });
+  }
+
+  function drawInspector(visible) {
+    const job = result.rows.find(item => item.id === selectedId);
+    if (dirty || !job) {
+      inspector.innerHTML = `<h3>Proceso ${selectedId}</h3><p>Prepara la simulación para ver los datos actualizados.</p>`;
+      setTalk(root, 'Pulsa «Preparar simulación» para aplicar los cambios.');
+      return;
+    }
+
+    const current = visible.at(-1);
+    const time = current?.end ?? 0;
+    const slices = visible.filter(segment => segment.id === job.id);
+    const done = slices.reduce((sum, segment) => sum + segment.end - segment.start, 0);
+    const waiting = Math.max(0, Math.min(time, job.finish) - job.arrival - done);
+    const finished = done === job.burst;
+    const arrived = time >= job.arrival;
+    const state = finished ? 'Terminado'
+      : !arrived ? 'Todavía no llega' : current?.id === job.id ? 'Ejecutó el último tramo' : 'En espera de CPU';
+    const response = slices.length ? ms(job.response) : '—';
+    const intervals = slices.map(segment => `${segment.start}–${segment.end}`).join(' · ');
+    const progressLabel = `${job.id} ha ejecutado ${done} de ${job.burst} milisegundos`;
+    inspector.innerHTML = `<div class="between"><h3>${chip(job.id, job.order)} ${state}</h3><span class="small">t = ${ms(time)} · llega en ${ms(job.arrival)}</span></div>
+      <progress value="${done}" max="${job.burst}" aria-label="${progressLabel}"></progress>
+      <div class="dials">
+        ${metric(`${done} / ${job.burst} ms`, 'Ejecutado')}
+        ${metric(ms(waiting), 'Espera acumulada')}
+        ${metric(response, 'Primera respuesta')}
+      </div>
+      <p class="small">${intervals ? 'Tramos de ' + job.id + ' (ms) · ' + intervals : 'Aún sin tramos ejecutados.'}</p>`;
+    if (finished) {
+      setTalk(root, `${job.id} termina en el instante ${job.finish}. En total pasa ${job.wait} ms esperando CPU.`);
+    } else if (!arrived) {
+      setTalk(root, `${job.id} todavía no llega. Se incorpora en el instante ${job.arrival}.`);
+    } else {
+      setTalk(root, `${job.id} ha usado ${done} de ${job.burst} ms de CPU y acumula ${waiting} ms de espera.`);
+    }
+  }
+
+  function drawPlayback() {
+    const complete = shown === result.segments.length;
+    if (complete) stop();
+    const current = result.segments[shown - 1];
+    pick(root, '[data-lab-count]').textContent = `${shown} / ${result.segments.length} tramos`;
+    const visible = result.segments.slice(0, shown);
+    plot.innerHTML = timeline(visible, result.end, { active: shown - 1, name: 'Planificación del laboratorio', focusId: selectedId });
+    const scroll = pick(plot, '.time-scroll');
+    if (current && scroll.scrollWidth > scroll.clientWidth) {
+      scroll.scrollLeft = (current.end / result.end) * (scroll.scrollWidth - scroll.clientWidth);
+    }
+    if (complete) status.textContent = `${policies[lab.policy]} termina en t = ${ms(result.end)}. Hay ${result.switches} cambios entre procesos.`;
+    else if (!current) status.textContent = `${policies[lab.policy]} está listo. El reloj empieza en t = 0.`;
+    else {
+      const action = current.kind === 'work' ? `${current.id} usa la CPU`
+        : current.kind === 'switch' ? 'El sistema cambia de contexto' : 'La CPU queda libre';
+      status.textContent = `${action} entre t = ${current.start} y t = ${ms(current.end)}.`;
+    }
+    const rules = {
+      fcfs: 'Se elige por orden de llegada entre los procesos listos.',
+      sjf: 'Se elige la ráfaga más corta entre los procesos listos al quedar libre la CPU.',
+      srtf: 'Se favorece el proceso con menos tiempo de CPU pendiente.',
+      rr: `Se toma el frente de la cola y se da un turno de hasta ${ms(lab.quantum)}.`,
+      priority: 'Se elige la mejor prioridad al quedar libre la CPU. Un número menor tiene mayor prioridad.',
+      priorityP: 'Una prioridad más alta puede interrumpir al proceso en curso.'
+    };
+    decision.hidden = current?.kind !== 'work' || dirty || complete;
+    if (!decision.hidden) decision.textContent = rules[lab.policy];
+    next.disabled = finish.disabled = play.disabled = complete || dirty;
+    rewind.disabled = shown === 0 || dirty;
+    drawSelection();
+    drawInspector(visible);
+    summary.hidden = !complete || dirty;
+    if (!summary.hidden) {
+      const wasOpen = pick(summary, 'details')?.open;
+      const tableRows = result.rows.map(job => `<tr class="${job.id === selectedId ? 'focus-row' : ''}">
+        <td>${job.id}</td><td>${job.finish}</td><td>${job.wait}</td><td>${job.turn}</td><td>${job.response}</td>
+        </tr>`).join('');
+      summary.innerHTML = `<div class="grid-stats">
+        ${metric(ms(result.wait), 'Espera media')}${metric(ms(result.response), 'Respuesta media')}
+        ${metric(ms(result.turn), 'Retorno medio')}${metric(`${fmt(result.utilization)}%`, 'Uso útil de CPU')}
+        </div><details ${wasOpen ? 'open' : ''}>
+          <summary>Ver tiempos por proceso</summary>
+          <div class="table-scroll">
+            <table><caption>Tiempos en milisegundos</caption>
+              <thead><tr><th>Proceso</th><th>Fin</th><th>Espera</th><th>Retorno</th><th>Respuesta</th></tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+          <p class="small">Rendimiento · ${fmt(result.throughput)} procesos por ms.</p>
+        </details>`;
+    }
+  }
+
+  function markDirty() {
+    stop();
+    dirty = true;
+    configNote.textContent = 'Hay cambios pendientes. Pulsa «Preparar simulación» para aplicarlos.';
+    drawPlayback();
+  }
+
+  function drawJobs() {
+    const limits = [['arrival', 'Llegada', 0, 40], ['burst', 'Ráfaga', 1, 20], ['priority', 'Prioridad', 1, 9]];
+    rows.innerHTML = draft.map((job, i) => `<tr data-row-job="${job.id}">
+      <td>${entityButton(job.id, i, job.id === selectedId)}</td>
+      ${limits.map(([key, label, min, max]) => `<td><input type="number" min="${min}" max="${max}" step="1"
+        value="${Number.isFinite(job[key]) ? job[key] : ''}" data-i="${i}" data-key="${key}"
+        aria-label="${label} de ${job.id}" required></td>`).join('')}
+      <td><button type="button" class="table-action" aria-label="Quitar ${job.id}"
+        data-remove="${i}" ${draft.length <= 1 ? 'disabled' : ''}>Quitar</button></td>
+    </tr>`).join('');
+    add.disabled = draft.length >= 8;
+  }
+
+  function prepare() {
+    if (!form.reportValidity()) return;
+    stop();
+    Object.assign(lab, { jobs: cloneJobs(draft), policy: policy.value, quantum: +quantum.value, cost: +cost.value });
+    result = schedule(lab.jobs, lab.policy, lab.quantum, lab.cost);
+    if (!lab.jobs.some(job => job.id === selectedId)) selectedId = lab.jobs[0].id;
+    choices.innerHTML = result.rows.map(job => entityButton(job.id, job.order, job.id === selectedId)).join('');
+    shown = 0;
+    dirty = false;
+    configNote.textContent = 'Configuración aplicada. El comparador usa estos mismos procesos.';
+    drawPlayback();
+  }
+
+  form.onsubmit = event => { event.preventDefault(); prepare(); };
+  form.addEventListener('input', event => {
+    const input = event.target;
+    if (input.dataset.key) {
+      const job = draft[Number(input.dataset.i)];
+      job[input.dataset.key] = input.valueAsNumber;
+      selectedId = job.id;
+    }
+    markDirty();
+  });
+
+  function selectFrom(event) {
+    const button = event.target.closest('[data-entity]');
+    if (!button) return;
+    selectedId = button.dataset.entity;
+    drawPlayback();
+  }
+  choices.onclick = selectFrom;
+  rows.onclick = event => {
+    const button = event.target.closest('[data-remove]');
+    if (!button) { selectFrom(event); return; }
+    if (draft.length <= 1) return;
+    const [removed] = draft.splice(Number(button.dataset.remove), 1);
+    if (selectedId === removed.id) selectedId = draft[0].id;
+    drawJobs();
+    markDirty();
+    add.focus();
+  };
+  add.onclick = () => {
+    if (draft.length >= 8) return;
+    selectedId = 'P' + lab.nextId++;
+    draft.push({ id: selectedId, arrival: 3, burst: 4, priority: 3 });
+    drawJobs();
+    markDirty();
+    rows.lastElementChild.querySelector('input').focus();
+  };
+  useChoice(form, '[data-preset]', 'preset', preset => {
+    draft = cloneJobs(preset === 'idle' ? idleJobs : baseJobs);
+    selectedId = draft[1].id;
+    policy.value = preset === 'rr' ? 'rr' : 'fcfs';
+    quantum.value = 2;
+    cost.value = 0;
+    lab.nextId = 4;
+    drawJobs();
+    prepare();
+  });
+
+  function advance() {
+    if (shown < result.segments.length) shown++;
+    drawPlayback();
+  }
+  next.onclick = advance;
+  finish.onclick = () => { shown = result.segments.length; drawPlayback(); };
+  rewind.onclick = () => { stop(); shown = 0; drawPlayback(); };
+  play.onclick = () => {
+    if (clock !== null) { stop(); return; }
+    play.textContent = 'Pausar';
+    clock = setInterval(advance, 600);
+    advance();
+  };
+  drawJobs();
+  prepare();
+  return stop;
+}
+
+function mountCompare(root) {
+  let jobs = cloneJobs(baseJobs);
+  let quantum = 2;
+  let cost = 0;
+  let displayedMetric = 'response';
+  let selectedId = 'P2';
+  const left = pick(root, '[data-compare-a]');
+  const right = pick(root, '[data-compare-b]');
+  const processChoices = pick(root, '[data-compare-jobs]');
+  left.value = 'fcfs';
+  right.value = 'rr';
+  const labels = { wait: 'Espera total', response: 'Tiempo hasta empezar', turn: 'Tiempo hasta terminar' };
+  const averages = { wait: 'Espera media', response: 'Tiempo medio hasta empezar', turn: 'Tiempo medio hasta terminar' };
+
+  function drawChoices() {
+    processChoices.innerHTML = jobs.map((job, i) => entityButton(job.id, i, job.id === selectedId)).join('');
+  }
+
+  function draw() {
+    const choices = [left.value, right.value];
+    const pair = choices.map(policy => schedule(jobs, policy, quantum, cost));
+    const end = Math.max(...pair.map(r => r.end));
+    const average = selectedId === 'all';
+    const values = pair.map(result => average ? result[displayedMetric] : result.rows.find(job => job.id === selectedId)[displayedMetric]);
+    const max = Math.max(1, ...values);
+    const workload = [jobs.length + (jobs.length === 1 ? ' proceso' : ' procesos')];
+    if (choices.includes('rr')) workload.push('Round Robin: hasta ' + ms(quantum) + ' por turno');
+    if (cost > 0) workload.push('Coste de cambio: ' + ms(cost));
+    pick(root, '[data-compare-use]').textContent = workload.join(' · ');
+    pick(root, '[data-compare-plots]').innerHTML = pair.map((r, i) => `<section>
+      <div class="between"><h3>${i === 0 ? 'A' : 'B'} · ${policies[choices[i]]}</h3><span class="small">${r.switches} cambios · termina en ${ms(r.end)}</span></div>
+      ${timeline(r.segments, end, { compact: true, name: policies[choices[i]], focusId: average ? null : selectedId })}
+    </section>`).join('');
+    const label = average ? averages[displayedMetric] : labels[displayedMetric] + ' de ' + selectedId;
+    pick(root, '[data-compare-caption]').textContent = label;
+    pick(root, '[data-compare-bars]').innerHTML = values.map((value, i) => `<div class="measure">
+      <span>${i === 0 ? 'A' : 'B'} · ${policies[choices[i]]}</span>
+      <span class="measure-track" aria-hidden="true"><i class="tone-${i === 0 ? 0 : 2}" style="width:${100 * value / max}%"></i></span>
+      <strong>${ms(value)}</strong>
+    </div>`).join('');
+    const difference = Math.abs(values[0] - values[1]);
+    const better = values[0] < values[1] ? choices[0] : choices[1];
+    pick(root, '[data-compare-status]').textContent = difference < 0.00001
+      ? 'El tiempo es igual en los dos diagramas.'
+      : `${policies[better]} reduce ese tiempo en ${ms(difference)}.`;
+    const first = policies[choices[0]];
+    const second = policies[choices[1]];
+    const verb = displayedMetric === 'response' ? 'tarda en empezar' : displayedMetric === 'turn' ? 'tarda en terminar' : 'espera en total';
+    setTalk(root, average
+      ? `El promedio es de ${ms(values[0])} con ${first} y ${ms(values[1])} con ${second}.`
+      : `${selectedId} ${verb} ${ms(values[0])} con ${first} y ${ms(values[1])} con ${second}.`);
+    setPressed(root, '[data-entity]', 'entity', selectedId);
+    setPressed(root, '[data-compare-metric]', 'compareMetric', displayedMetric);
+  }
+  left.onchange = right.onchange = draw;
+  processChoices.onclick = event => {
+    const button = event.target.closest('[data-entity]');
+    if (!button) return;
+    selectedId = button.dataset.entity;
+    draw();
+  };
+  useChoice(root, '[data-compare-metric]', 'compareMetric', key => { displayedMetric = key; draw(); });
+  pick(root, '[data-compare-average]').onclick = () => { selectedId = 'all'; draw(); };
+  function useWorkload(source, newQuantum, newCost) {
+    jobs = cloneJobs(source);
+    quantum = newQuantum;
+    cost = newCost;
+    selectedId = jobs[1]?.id ?? jobs[0].id;
+    displayedMetric = 'response';
+    drawChoices();
+    draw();
+  }
+  pick(root, '[data-compare-sample]').onclick = () => {
+    left.value = 'fcfs';
+    right.value = 'rr';
+    useWorkload(baseJobs, 2, 0);
+  };
+  pick(root, '[data-compare-lab]').onclick = () => useWorkload(lab.jobs, lab.quantum, lab.cost);
+  drawChoices();
+  draw();
+}
+
+
+const editorThreads = {
+  H1: { role: 'Interfaz', task: 'atender la escritura', read: 'cargar la configuración del editor' },
+  H2: { role: 'Revisión', task: 'revisar el texto', read: 'cargar una entrada del diccionario' }
+};
+let observedThread = 'H1';
+
+function mountThreadIntro(root) {
+  const start = 'Informe sobre sistemas operativos.';
+  const additions = [
+    'Cada hilo ejecuta su parte del procso.',
+    'Podemos revisar una palbra sin salir del editor.',
+    'Los hilos trabajan sobre el mismo documento.'
+  ];
+  const corrections = { procso: 'proceso', palbra: 'palabra' };
+  const write = pick(root, '[data-editor-write]');
+  const review = pick(root, '[data-editor-review]');
+  const page = pick(root, '[data-editor-lines]');
+  let lines = [start];
+  let checked = 0;
+  let lastAction = null;
+
+  function draw() {
+    const found = [];
+    page.innerHTML = lines.map((line, i) => {
+      const text = i < checked ? line.replace(/\b(procso|palbra)\b/g, word => {
+        found.push(word);
+        return `<mark class="editor-flag" title="Sugerencia: ${corrections[word]}">${word}</mark>`;
+      }) : line;
+      return `<li>${text}</li>`;
+    }).join('');
+    write.disabled = lines.length - 1 >= additions.length;
+    review.disabled = checked === lines.length;
+    write.classList.toggle('primary', checked === lines.length || !lastAction);
+    review.classList.toggle('primary', checked < lines.length && lastAction === 'write');
+    if (!lastAction) {
+      describe(root, 'El editor ya tiene una línea.',
+        'P1 es el proceso del editor. Su memoria guarda el texto que usan los dos hilos.');
+    } else if (lastAction === 'write') {
+      describe(root, `H1 añadió la línea ${lines.length}.`,
+        'H1 acaba de guardar una línea en la memoria del editor. H2 puede leerla y revisar su ortografía.');
+    } else {
+      const suggestions = found.map(word => '«' + word + '» → «' + corrections[word] + '»').join(' · ');
+      describe(root, suggestions ? 'H2 encontró ' + (found.length === 1 ? 'una marca' : found.length + ' marcas') + ' · ' + suggestions : 'H2 revisó el texto y no encontró marcas.',
+        suggestions
+          ? 'H2 revisó el texto que escribió H1. Las palabras resaltadas muestran las faltas que encontró.'
+          : 'H2 revisó el texto compartido. La revisión terminó con cero palabras marcadas.');
+    }
+  }
+  write.onclick = () => {
+    if (write.disabled) return;
+    lines.push(additions[lines.length - 1]);
+    observedThread = 'H1';
+    lastAction = 'write';
+    draw();
+  };
+  review.onclick = () => {
+    if (review.disabled) return;
+    checked = lines.length;
+    observedThread = 'H2';
+    lastAction = 'review';
+    draw();
+  };
+  pick(root, '[data-editor-reset]').onclick = () => {
+    lines = [start];
+    checked = 0;
+    observedThread = 'H1';
+    lastAction = null;
+    draw();
+  };
+  draw();
+}
+
+function mountThreadStates(root) {
+  let mode = 'io';
+  function choose() {
+    const id = observedThread;
+    const other = id === 'H1' ? 'H2' : 'H1';
+    const thread = editorThreads[id];
+    const io = mode === 'io';
+    setPressed(root, '[data-state-thread]', 'stateThread', id);
+    setPressed(root, '[data-state-mode]', 'stateMode', mode);
+
+    const steps = [
+      { state: 'Preparado', cpu: 'Libre', reason: 'Listo para ejecutar', action: 'Dar turno', text: `${id} está preparado.`, talk: `${id} ya tiene trabajo. Solo espera su turno de CPU.` },
+      { state: 'En CPU', cpu: id, reason: 'Recibe un turno', action: io ? 'Pedir lectura' : 'Agotar turno', text: `El planificador asigna el núcleo a ${id}.`, talk: `${id} recibe la CPU para ${thread.task}.` },
+      ...(io ? [
+        { state: 'Bloqueado', cpu: other, reason: 'Pide una lectura', action: 'Completar lectura', text: `${id} pide ${thread.read}.`, talk: `${id} queda bloqueado hasta que llegan los datos. Durante esa espera, ${other} usa el núcleo.` },
+        { state: 'Preparado', cpu: other, reason: 'Finaliza la lectura', action: 'Reanudar hilo', text: `${id} vuelve a la cola.`, talk: `Ya llegaron los datos. ${id} está preparado para recibir otro turno.` }
+      ] : [
+        { state: 'Preparado', cpu: other, reason: 'Se agota el turno', action: 'Reanudar hilo', text: `${id} vuelve a la cola por fin de turno.`, talk: `Se acabó el turno de ${id}. Sigue preparado y espera otro turno.` }
+      ]),
+      { state: 'En CPU', cpu: id, reason: 'Vuelve a ejecutar', action: 'Terminar tarea', text: `${id} reanuda su ejecución.`, talk: `El sistema conserva el punto donde quedó ${id}. El hilo continúa desde allí.` },
+      { state: 'Terminado', cpu: 'Libre', reason: 'Completa su tarea', text: `${id} termina.`, talk: 'El núcleo queda libre para otro hilo preparado.' }
+    ];
+    stepStory(root, steps, (step, index) => `<div class="stack">
+      <div class="state-route" style="--state-count:${steps.length}" aria-label="Secuencia de estados">
+        ${steps.map((item, i) => `<div class="state-node ${i < index ? 'reached' : ''}" ${i === index ? 'aria-current="step"' : ''}>
+          <small>Paso ${i + 1}</small><b>${item.state}</b>
+        </div>`).join('')}
+      </div>
+      <div class="box state-detail">
+        <h3>${step.reason}</h3>
+        <div class="tri">
+          <div class="flow-cell"><strong>Hilo observado</strong><span>${id} · ${thread.role}</span></div>
+          <div class="flow-cell active"><strong>Estado</strong><span>${step.state}</span></div>
+          <div class="flow-cell"><strong>Núcleo</strong><span>${step.cpu}</span></div>
+        </div>
+        <p>${step.text}</p>
+      </div>
+    </div>`, step => step.talk);
+  }
+  useChoice(root, '[data-state-thread]', 'stateThread', id => { observedThread = id; choose(); });
+  useChoice(root, '[data-state-mode]', 'stateMode', value => { mode = value; choose(); });
+  choose();
+}
+
+function mountThreadWork(root) {
+  let threads = 3;
+  let turn = 0;
+  let work = [];
+  let onCores = [];
+  let cursor = 0;
+  let selected = 1;
+  const blocked = new Set();
+  const coresField = pick(root, '[data-cores]');
+  const options = pick(root, '[data-work-options]');
+  const choices = pick(root, '[data-work-threads]');
+  const block = pick(root, '[data-thread-block]');
+  const add = pick(root, '[data-thread-add]');
+  const remove = pick(root, '[data-thread-remove]');
+  const step = pick(root, '[data-work-step]');
+  const finish = pick(root, '[data-work-finish]');
+  const total = 12;
+
+  function drawChoices() {
+    choices.innerHTML = Array.from({ length: threads }, (_, i) => entityButton('H' + (i + 1), i, i + 1 === selected)).join('');
+  }
+
+  function draw() {
+    const cores = +coresField.value;
+    setPressed(root, '[data-work-case]', 'workCase', threads + ':' + cores);
+    const parallel = Math.min(threads - blocked.size, cores);
+    const complete = work.length === total;
+    const expected = complete ? turn : parallel ? turn + Math.ceil((total - work.length) / parallel) : '—';
+    const selectedId = 'H' + selected;
+    const contribution = work.filter(id => id === selected).length;
+    const waiting = blocked.has(selected);
+    setPressed(root, '[data-entity]', 'entity', selectedId);
+    const onLastCore = onCores.indexOf(selected) + 1;
+    const last = onLastCore ? ` · Núcleo ${onLastCore} en el último turno` : '';
+    pick(root, '[data-thread-state]').textContent = `${selectedId} · ${waiting ? 'Bloqueado por E/S' : 'Disponible'} · ${contribution} ${contribution === 1 ? 'unidad hecha' : 'unidades hechas'}${last}`;
+    block.textContent = `${waiting ? 'Reanudar' : 'Bloquear'} ${selectedId}`;
+    block.disabled = complete;
+    pick(root, '[data-work]').innerHTML = Array.from({ length: total }, (_, i) => {
+      const id = work[i];
+      const css = id ? 'tone-' + (id - 1) : 'pending';
+      const focus = options.open ? id === selected ? 'focused-unit' : id ? 'dimmed-unit' : '' : '';
+      return `<span class="${css} ${focus}" title="Unidad ${i + 1}${id ? ' completada por H' + id : ' pendiente'}">${id ? 'H' + id : i + 1}</span>`;
+    }).join('');
+    pick(root, '[data-core-map]').innerHTML = Array.from({ length: cores }, (_, i) => {
+      const id = onCores[i];
+      return `<div class="flow-cell ${id ? 'active' : ''} ${options.open && id === selected ? 'core-focus' : ''}"><strong>Núcleo ${i + 1}</strong>
+        <span>${id ? 'H' + id + ' en el último turno' : 'Libre'}</span></div>`;
+    }).join('');
+    pick(root, '[data-stats]').innerHTML = metric(`${work.length} / ${total}`, 'Unidades completas')
+      + metric(turn, 'Turnos usados') + metric(expected, 'Turnos previstos');
+    const capacity = parallel === 1 ? 'Una unidad por turno.' : `Hasta ${parallel} unidades por turno.`;
+    if (complete) {
+      describe(root, `Las 12 unidades se completaron en ${turn} turnos.`,
+        `El trabajo completo tomó ${turn} ${turn === 1 ? 'turno' : 'turnos'}.`);
+    } else if (!parallel) {
+      describe(root, 'Todos los hilos esperan E/S. Reanuda uno para continuar.',
+        'El trabajo se detiene porque todos los hilos están bloqueados.');
+    } else if (waiting) {
+      describe(root, `${selectedId} espera E/S. ${capacity}`,
+        `${selectedId} está bloqueado. El trabajo continúa con los hilos que están listos.`);
+    } else if (!turn) {
+      const explanation = cores === 1 && threads > 1
+        ? 'Los hilos se reparten los turnos de un solo núcleo. En cada turno se llena una casilla de trabajo.'
+        : parallel === 1 ? 'Un hilo completa una casilla de trabajo por turno.' : `${parallel} hilos pueden trabajar al mismo tiempo, uno en cada núcleo. A eso se le llama paralelismo.`;
+      describe(root, capacity, explanation);
+    } else {
+      describe(root, `Turno ${turn}. Se completaron ${onCores.length} ${onCores.length === 1 ? 'unidad' : 'unidades'}. Quedan ${total - work.length}.`,
+        onCores.length === 1 ? 'En este turno trabajó un núcleo y se llenó una casilla.' : `Trabajaron ${onCores.length} núcleos al mismo tiempo. Cada uno completó una casilla en este turno.`);
+    }
+    add.disabled = threads >= 6;
+    remove.disabled = threads <= 1;
+    step.disabled = finish.disabled = complete || parallel === 0;
+  }
+  function reset() { work = []; onCores = []; turn = 0; cursor = 0; draw(); }
+  function advance() {
+    const ready = Array.from({ length: threads }, (_, i) => (cursor + i) % threads + 1)
+      .filter(id => !blocked.has(id));
+    onCores = ready.slice(0, Math.min(+coresField.value, total - work.length));
+    if (!onCores.length) return false;
+    cursor = onCores.at(-1) % threads;
+    work.push(...onCores);
+    turn++;
+    return true;
+  }
+  choices.onclick = event => {
+    const button = event.target.closest('[data-entity]');
+    if (!button) return;
+    selected = Number(button.dataset.entity.slice(1));
+    draw();
+  };
+  block.onclick = () => {
+    if (blocked.has(selected)) blocked.delete(selected);
+    else blocked.add(selected);
+    draw();
+  };
+  add.onclick = () => {
+    if (threads >= 6) return;
+    selected = ++threads;
+    drawChoices();
+    reset();
+  };
+  remove.onclick = () => {
+    if (threads <= 1) return;
+    blocked.delete(threads--);
+    selected = Math.min(selected, threads);
+    drawChoices();
+    reset();
+  };
+  coresField.onchange = reset;
+  step.onclick = () => { advance(); draw(); };
+  finish.onclick = () => {
+    while (work.length < total) {
+      if (!advance()) break;
+    }
+    draw();
+  };
+  pick(root, '[data-reset]').onclick = reset;
+  function loadScenario(value) {
+    const [threadCount, cores] = value.split(':').map(Number);
+    threads = threadCount;
+    selected = 1;
+    coresField.value = cores;
+    blocked.clear();
+    drawChoices();
+    reset();
+  }
+  pick(root, '[data-default]').onclick = () => loadScenario('3:1');
+  useChoice(root, '[data-work-case]', 'workCase', loadScenario);
+  options.addEventListener('toggle', draw);
+  drawChoices();
+  draw();
+}
+
+function mountThreadIO(root) {
+  function segment(label, start, end, tone, kind = 'work') {
+    return { label, start, end, tone, kind };
+  }
+  function draw(mode) {
+    const two = mode === 'two';
+    const cpu = [
+      segment('A', 0, 1, 0),
+      ...(two ? [segment('B', 1, 3, 2), segment('Libre', 3, 4, 0, 'idle')] : [segment('Libre', 1, 4, 0, 'idle')]),
+      segment('A', 4, 5, 0)
+    ];
+    if (!two) cpu.push(segment('B', 5, 7, 2));
+    setPressed(root, '[data-thread-io]', 'threadIo', mode);
+    pick(root, '[data-cpu]').innerHTML = timeline(cpu, 7, { compact: true, name: 'Ocupación de la CPU' });
+    pick(root, '[data-io]').innerHTML = timeline([segment('Lectura en curso', 1, 4, 1)], 7, { compact: true, name: 'Lectura de A' });
+    pick(root, '[data-stats]').innerHTML = metric(ms(two ? 5 : 7), 'Termina todo el trabajo')
+      + metric(ms(two ? 1 : 3), 'CPU libre antes de terminar');
+    describe(root, two
+      ? 'H2 ejecuta B de t = 1 a t = 3 mientras H1 espera la lectura.'
+      : 'El único hilo espera la lectura entre t = 1 y t = 4. B se ejecuta después de A.',
+      two ? 'H2 hace B mientras H1 espera la lectura. Todo termina en 5 ms.'
+        : 'Durante la lectura, la CPU queda libre. B empieza después de A y todo termina en 7 ms.');
+  }
+  useChoice(root, '[data-thread-io]', 'threadIo', draw);
+  draw('one');
+}
+
+function mountThreadJoin(root) {
+  let state = 0;
+  const [create, join, finish] = ['create', 'join', 'finish'].map(key => pick(root, '[data-' + key + ']'));
+  const rows = [
+    ['Ejecutando', 'Sin crear', 'H1 es el hilo principal.', '// El proceso empieza con H1.', 'Al crearlo, se indica qué función ejecutará H2.'],
+    ['Puede continuar', 'Preparado', 'H2 ya existe y está listo.', 'pthread_create(&h2, NULL, tarea, datos);', 'H1 puede seguir trabajando mientras H2 espera su turno.'],
+    ['Bloqueado en join', 'Ejecutando', 'H1 espera a H2.', 'pthread_join(h2, NULL);', 'La llamada a join detiene H1 hasta que termine H2.'],
+    ['Preparado para continuar', 'Terminado', 'H2 termina su función.', '// La función tarea de H2 retorna.\n// El join de H1 puede terminar.', 'H1 vuelve a estar listo y puede recibir CPU.']
+  ];
+  function draw() {
+    const [h1, h2, status, code, explanation] = rows[state];
+    pick(root, '[data-h1]').textContent = h1;
+    pick(root, '[data-h2]').textContent = h2;
+    describe(root, status, explanation);
+    pick(root, '[data-code]').textContent = code;
+    create.disabled = state !== 0;
+    join.disabled = state !== 1;
+    finish.disabled = state !== 2;
+  }
+  create.onclick = () => { state = 1; draw(); };
+  join.onclick = () => { state = 2; draw(); };
+  finish.onclick = () => { state = 3; draw(); };
+  pick(root, '[data-reset]').onclick = () => { state = 0; draw(); };
+  draw();
+}
+
+
+const diagramThreadLimit = 6;
+const newDiagramThread = () => ({ instruction: 0 });
+const processDiagram = { threads: [newDiagramThread(), newDiagramThread()], active: 0, lastAddedCount: null };
+const programLines = ['Leer un bloque', 'Procesar los datos', 'Guardar el resultado'];
+const threadName = index => 'H' + (index + 1);
+
+const processRegions = {
+  files: { name: 'Archivos', explanation: 'Los hilos pueden leer o escribir los archivos que el proceso tiene abiertos, como el documento del editor.' },
+  data: { name: 'Datos', explanation: 'Los datos son los valores que usa el programa. Por ejemplo, dos hilos del editor pueden leer el mismo texto guardado.' },
+  code: { name: 'Código', explanation: 'El código son las instrucciones del programa. Los hilos usan ese mismo código y cada uno guarda en qué instrucción va.' }
+};
+
+function addDiagramThread() {
+  if (processDiagram.threads.length < diagramThreadLimit) {
+    processDiagram.active = processDiagram.threads.push(newDiagramThread()) - 1;
+    processDiagram.lastAddedCount = processDiagram.threads.length;
+  }
+}
+
+function removeDiagramThread() {
+  if (processDiagram.threads.length > 1) processDiagram.threads.pop();
+  processDiagram.active = Math.min(processDiagram.active, processDiagram.threads.length - 1);
+  processDiagram.lastAddedCount = null;
+}
+
+function mountProcessAnatomy(root) {
+  const diagram = pick(root, '[data-process-diagram]');
+  const title = pick(root, '[data-anatomy-title]');
+  const advance = pick(root, '[data-anatomy-advance]');
+  const add = pick(root, '[data-anatomy-add]');
+  const remove = pick(root, '[data-anatomy-remove]');
+  const reference = newDiagramThread();
+  let selected = { part: 'stack', index: processDiagram.active };
+
+  function partButton(process, part, index, label, accessibleLabel = label) {
+    if (process === 'mono') return `<span class="process-part-reference">${label}</span>`;
+    const pressed = part === selected.part && index === selected.index;
+    return `<button type="button" class="process-part" data-anatomy-part="${part}|${index}"
+      aria-label="${accessibleLabel}" aria-pressed="${pressed}">${label}</button>`;
+  }
+
+  function processBox(process, threads) {
+    const mono = process === 'mono';
+    const name = mono ? 'P1' : 'P2';
+    const resources = Object.entries(processRegions).map(([key, resource]) =>
+      partButton(process, key, -1, resource.name, resource.name + ' de ' + name)).join('');
+    const contexts = threads.map((_, index) => {
+      const id = threadName(index);
+      const active = !mono && index === selected.index;
+      return `<div class="thread-envelope ${active ? 'thread-observed' : ''}">
+        <strong>${id} · ${index === 0 ? 'Hilo principal' : 'Hilo adicional'}</strong>
+        <div class="thread-parts">
+          ${partButton(process, 'stack', index, 'Pila', 'Pila de ' + id + ' en ' + name)}
+          ${partButton(process, 'registers', index, 'Registros', 'Registros de ' + id + ' en ' + name)}
+        </div>
+      </div>`;
+    }).join('');
+    const kind = threads.length === 1 ? 'Monohilo' : 'Multihilo';
+    return `<section class="process-envelope" aria-label="${name} · ${kind}">
+      <div class="between process-heading"><h3>Proceso ${name} · ${kind}</h3>
+        <span class="small">${threads.length} ${threads.length === 1 ? 'hilo' : 'hilos'}${mono ? ' · referencia' : ''}</span></div>
+      <div class="process-resources" role="group" aria-label="Recursos de ${name}">${resources}</div>
+      <div class="thread-envelopes ${threads.length > 3 ? 'many' : ''}">${contexts}</div>
+    </section>`;
+  }
+
+  function draw(added = false) {
+    diagram.innerHTML = processBox('mono', [reference]) + processBox('multi', processDiagram.threads);
+    add.disabled = processDiagram.threads.length >= diagramThreadLimit;
+    remove.disabled = processDiagram.threads.length <= 1;
+    const resource = processRegions[selected.part];
+    if (resource) {
+      title.textContent = resource.name + ' de P2';
+      advance.hidden = true;
+      describe(root, 'Recurso compartido.', resource.explanation);
+      return;
+    }
+
+    const id = threadName(selected.index);
+    const thread = processDiagram.threads[selected.index];
+    const finished = thread.instruction === programLines.length;
+    const following = finished ? 'tarea terminada' : programLines[thread.instruction].toLowerCase();
+    const stack = selected.part === 'stack';
+    title.textContent = `${stack ? 'Pila' : 'Registros'} de ${id} en P2`;
+    advance.hidden = false;
+    advance.disabled = finished;
+    advance.textContent = 'Avanzar ' + id;
+    if (stack) {
+      describe(root, added ? 'Nuevo hilo en P2.' : 'Pila propia del hilo.', added
+        ? `${id} aparece con su propia pila para guardar datos temporales y con sus propios valores de registros. El código, los datos comunes y los archivos son del proceso completo.`
+        : `La pila de ${id} es donde ese hilo guarda datos temporales, como los valores de un cálculo. Cada hilo tiene una pila para su trabajo.`);
+    } else {
+      describe(root, `Instrucciones hechas: ${thread.instruction}. Siguiente: ${following}.`,
+        `Los registros son espacios pequeños y rápidos del procesador. El sistema guarda sus valores para que ${id} pueda continuar desde la próxima instrucción.`);
+    }
+  }
+
+  diagram.onclick = event => {
+    const button = event.target.closest('[data-anatomy-part]');
+    if (!button) return;
+    const key = button.dataset.anatomyPart;
+    const [part, index] = key.split('|');
+    selected = { part, index: Number(index) };
+    if (selected.index >= 0) processDiagram.active = selected.index;
+    draw();
+    pick(diagram, '[aria-pressed="true"]')?.focus({ preventScroll: true });
+  };
+  add.onclick = () => {
+    addDiagramThread();
+    selected = { part: 'stack', index: processDiagram.active };
+    draw(true);
+  };
+  remove.onclick = () => {
+    removeDiagramThread();
+    selected = { part: 'stack', index: processDiagram.active };
+    draw();
+  };
+  advance.onclick = () => {
+    const thread = processDiagram.threads[selected.index];
+    if (!thread || thread.instruction >= programLines.length) return;
+    thread.instruction++;
+    selected.part = 'registers';
+    draw();
+  };
+  pick(root, '[data-anatomy-reset]').onclick = () => {
+    processDiagram.threads = [newDiagramThread(), newDiagramThread()];
+    processDiagram.active = 0;
+    processDiagram.lastAddedCount = null;
+    selected = { part: 'stack', index: 0 };
+    draw();
+  };
+  draw();
+}
+
+function mountThreadMemory(root) {
+  const diagram = pick(root, '[data-address-map]');
+  const moments = pick(root, '[data-memory-moments]');
+  const toggle = pick(root, '[data-memory-toggle]');
+  const cue = pick(root, '[data-memory-cue]');
+  const done = pick(root, '[data-memory-done]');
+  pick(root, '.memory-controls').append(pick(root, '#lesson-explanation'));
+  const currentCount = processDiagram.threads.length;
+  const replayLastAddition = currentCount === processDiagram.lastAddedCount || currentCount === diagramThreadLimit;
+  const beforeCount = replayLastAddition ? currentCount - 1 : currentCount;
+  const afterCount = beforeCount + 1;
+  const newThread = threadName(beforeCount);
+  let after = false;
+
+  function moment(label, count, active) {
+    const totals = count === 1 ? '1 hilo · 1 pila' : `${count} hilos · ${count} pilas`;
+    return `<div class="memory-moment" aria-current="${active ? 'step' : 'false'}">
+      <span>${label}</span><strong>${totals}</strong>
+    </div>`;
+  }
+
+  function draw() {
+    const count = after ? afterCount : beforeCount;
+    const stacks = Array.from({ length: count }, (_, index) => {
+      const added = after && index === beforeCount;
+      return `<div class="memory-region memory-stack${added ? ' is-new' : ''}">
+        <strong>Pila de ${threadName(index)}</strong>${added ? '<span class="memory-new-tag">Nueva</span>' : ''}
+      </div>`;
+    }).join('');
+    diagram.innerHTML = `<div class="address-row">
+      <div class="address-box">
+        <div class="memory-region memory-kernel"><strong>Núcleo del sistema operativo</strong><span>Parte que administra el equipo</span></div>
+      </div>
+      <span class="address-bracket">Espacio del núcleo</span>
+    </div>
+    <div class="address-row address-user">
+      <div class="address-box">
+        <div class="memory-group">
+          <h3>Pilas de P2</h3>
+          ${stacks}
+        </div>
+        <div class="memory-group">
+          <h3>Memoria que comparten los hilos de P2</h3>
+          <div class="memory-region"><strong>Montón</strong><span>Espacio que el programa reserva para datos nuevos</span></div>
+          <div class="memory-region"><strong>Datos</strong><span>Valores que el programa conserva al funcionar</span></div>
+          <div class="memory-region"><strong>Código</strong><span>Instrucciones del programa</span></div>
+        </div>
+      </div>
+      <span class="address-bracket">Espacio de usuario</span>
+    </div>`;
+    moments.innerHTML = moment('Antes', beforeCount, !after) + moment('Después', afterCount, after);
+    toggle.textContent = after ? 'Reiniciar ejemplo' : 'Mostrar la pila nueva';
+    toggle.classList.toggle('primary', !after);
+    cue.hidden = after;
+    done.hidden = !after;
+    if (after) {
+      describe(root, `${newThread} ya tiene su propia pila.`,
+        `P2 pasa de ${beforeCount} a ${afterCount} pilas porque se agregó ${newThread}. Todos los hilos usan el código, los datos comunes y el montón del mismo proceso.`);
+    } else {
+      describe(root, `${newThread} es el siguiente hilo de P2.`,
+        'Cada fila de pila pertenece a un hilo. Debajo aparecen el código, los datos y el montón, que todos los hilos de P2 pueden usar.');
+    }
+  }
+
+  toggle.onclick = () => {
+    after = !after;
+    draw();
+  };
+  draw();
+}
+
+
+let selectedThreadModel = 'many';
+
+function mountThreadModels(root) {
+  const diagram = pick(root, '[data-thread-models]');
+  let selection = { process: 2, index: processDiagram.active };
+
+  function processMap(process, count, many) {
+    const threads = Array.from({ length: count }, (_, index) => {
+      const active = selection.process === process && selection.index === index;
+      return `<div class="mapping-port">
+        <button type="button" class="mapping-node" data-user-thread="${process}:${index}"
+          aria-label="${threadName(index)} de P${process}" aria-pressed="${active}">${threadName(index)}</button>
+        <span class="mapping-wire ${active ? 'lit' : ''}" aria-hidden="true"></span>
+      </div>`;
+    }).join('');
+    const kernels = Array.from({ length: many ? 1 : count }, (_, index) => {
+      const active = selection.process === process && (many || index === selection.index);
+      return `<div class="mapping-port">
+        <span class="mapping-wire ${active ? 'lit' : ''}" aria-hidden="true"></span>
+        <span class="mapping-node kernel-node ${active ? 'lit' : ''}">K${process}.${index + 1}</span>
+      </div>`;
+    }).join('');
+    return `<section class="process-envelope mapping-process" aria-label="Mapeo de P${process}" style="--nodes:${count}">
+      <h3>Proceso P${process}</h3>
+      <div class="mapping-layer">
+        <div class="mapping-caption">Modo usuario</div>
+        <div class="mapping-nodes" role="group" aria-label="Hilos de usuario de P${process}">${threads}</div>
+        ${many ? '<div class="mapping-library">Librería de hilos</div>' : ''}
+      </div>
+      <div class="mapping-layer mapping-kernel">
+        <div class="mapping-nodes" style="--nodes:${many ? 1 : count}" aria-label="Hilos que ve el planificador">${kernels}</div>
+        <div class="mapping-caption">Modo núcleo · ${many ? '1 hilo planificable' : count + (count === 1 ? ' hilo planificable' : ' hilos planificables')}</div>
+      </div>
+    </section>`;
+  }
+
+  function draw() {
+    const many = selectedThreadModel === 'many';
+    const id = 'P' + selection.process + ' · ' + threadName(selection.index);
+    const kernel = `K${selection.process}.${many ? 1 : selection.index + 1}`;
+    setPressed(root, '[data-thread-model]', 'threadModel', selectedThreadModel);
+    diagram.innerHTML = processMap(1, 2, many) + processMap(2, processDiagram.threads.length, many);
+    describe(root, `${id} → ${many ? 'librería → ' : ''}${kernel}`,
+      many
+        ? `Los hilos del proceso usan el mismo hilo de núcleo, ${kernel}. La librería decide cuál ejecuta.`
+        : `${id} tiene su propio hilo de núcleo, ${kernel}. El planificador puede darle un turno por separado.`);
+  }
+  useChoice(root, '[data-thread-model]', 'threadModel', mode => { selectedThreadModel = mode; draw(); });
+  diagram.onclick = event => {
+    const button = event.target.closest('[data-user-thread]');
+    if (!button) return;
+    const [process, index] = button.dataset.userThread.split(':').map(Number);
+    selection = { process, index };
+    draw();
+    pick(diagram, '[aria-pressed="true"]')?.focus({ preventScroll: true });
+  };
+  draw();
+}
+
+function mountThreadSequence(root) {
+  const diagram = pick(root, '[data-read-sequence]');
+  const next = pick(root, '[data-sequence-next]');
+  const back = pick(root, '[data-sequence-back]');
+  const labels = ['H1', 'Librería', 'H2', 'Núcleo', 'Dispositivo'];
+  let current = 0;
+
+  function draw() {
+    const many = selectedThreadModel === 'many';
+    const scheduler = many ? 1 : 3;
+    const events = [
+      { from: 0, to: 0, label: 'Ejecuta H1', action: 'Ceder turno', h1: 'Ejecutando', h2: 'Preparado', cpu: 'H1',
+        talk: 'H1 usa la CPU. H2 espera su turno.' },
+      { from: 0, to: scheduler, label: many ? 'yield()' : 'Cede al núcleo', action: 'Dar turno a H2', h1: 'Cede el turno', h2: 'Preparado', cpu: 'Cambio de turno',
+        talk: many ? 'H1 cede el turno. La librería elige el siguiente hilo.'
+          : 'H1 cede el turno. El núcleo elige el siguiente hilo.' },
+      { from: scheduler, to: 2, label: 'Selecciona H2', action: 'Solicitar read()', h1: 'Preparado', h2: 'Ejecutando', cpu: 'H2',
+        talk: 'H2 recibe la CPU y puede iniciar la lectura.' },
+      { from: 2, to: 3, label: 'read()', action: 'Iniciar lectura', h1: many ? 'Sin hilo de núcleo disponible' : 'Puede recibir CPU', h2: 'Bloqueado', cpu: many ? 'P2 no ejecuta' : 'Puede ejecutar H1',
+        talk: many ? 'La lectura bloquea el único hilo de núcleo de P2. H1 también queda sin CPU.'
+          : 'La lectura bloquea H2. H1 tiene su propio hilo de núcleo y puede ejecutar.' },
+      { from: 3, to: 4, label: 'Inicia la E/S', action: 'Completar lectura', h1: many ? 'Sin hilo de núcleo disponible' : 'Puede recibir CPU', h2: 'Bloqueado', cpu: many ? 'P2 no ejecuta' : 'Puede ejecutar H1',
+        talk: many ? 'Ningún hilo de P2 ejecuta mientras dura la lectura.'
+          : 'H2 espera los datos. H1 puede usar la CPU durante esa espera.' },
+      { from: 4, to: 3, label: 'Datos listos', action: 'Reanudar H2', h1: 'Puede recibir CPU', h2: 'Preparado', cpu: 'El planificador elige',
+        talk: 'Llegan los datos. H2 puede volver a recibir CPU.' },
+      { from: 3, to: 2, label: 'Retoma H2', h1: 'Preparado', h2: 'Ejecutando', cpu: 'H2',
+        talk: many ? 'P2 vuelve a recibir CPU y H2 continúa con los datos de la lectura.'
+          : 'El núcleo da un turno a H2, que continúa con los datos de la lectura.' }
+    ];
+    setPressed(root, '[data-read-model]', 'readModel', selectedThreadModel);
+    const header = `<div class="sequence-head"><span class="small sequence-time">Tiempo ↓</span>
+      ${labels.map(name => `<strong>${name}</strong>`).join('')}</div>`;
+    const rows = events.map((event, index) => {
+      const start = Math.min(event.from, event.to);
+      const end = Math.max(event.from, event.to);
+      const direction = event.from === event.to ? 'stationary' : event.from < event.to ? 'rightward' : 'leftward';
+      const state = index === current ? 'current' : index < current ? 'past' : 'future';
+      return `<div class="sequence-row ${state}">
+        <button type="button" data-sequence-event="${index}" class="sequence-step"
+          ${index === current ? 'aria-current="step"' : ''} aria-label="Paso ${index + 1}: ${event.label}">${index + 1}</button>
+        ${labels.map((_, lane) => `<span class="lifeline" style="grid-column:${lane + 2}" aria-hidden="true"></span>`).join('')}
+        <span class="sequence-hop ${direction}" style="grid-column:${start + 2}/${end + 3};--span:${end - start + 1}"
+          title="${labels[event.from]} → ${labels[event.to]}"><b>${event.label}</b><i aria-hidden="true"></i></span>
+      </div>`;
+    }).join('');
+    diagram.innerHTML = header + rows;
+    const step = events[current];
+    const waiting = current === 3 || current === 4;
+    pick(root, '[data-read-states]').innerHTML = `<div class="flow-cell ${waiting && many ? 'active' : ''}"><strong>H1</strong><span>${step.h1}</span></div>
+      <div class="flow-cell ${waiting ? 'active' : ''}"><strong>H2</strong><span>${step.h2}</span></div>
+      <div class="flow-cell"><strong>Turno de CPU del ejemplo</strong><span>${step.cpu}</span></div>`;
+    next.disabled = current === events.length - 1;
+    next.textContent = step.action ?? 'Lectura completada';
+    back.disabled = current === 0;
+    pick(root, '[data-sequence-count]').textContent = `Paso ${current + 1} de ${events.length}`;
+    setTalk(root, step.talk);
+  }
+
+  useChoice(root, '[data-read-model]', 'readModel', mode => { selectedThreadModel = mode; draw(); });
+  diagram.onclick = event => {
+    const button = event.target.closest('[data-sequence-event]');
+    if (!button) return;
+    current = Number(button.dataset.sequenceEvent);
+    draw();
+    pick(diagram, '[aria-current="step"]').focus({ preventScroll: true });
+  };
+  next.onclick = () => { if (!next.disabled) { current++; draw(); } };
+  back.onclick = () => { if (current > 0) { current--; draw(); } };
+  pick(root, '[data-sequence-block]').onclick = () => { current = 4; draw(); };
+  pick(root, '[data-sequence-reset]').onclick = () => { current = 0; draw(); };
+  draw();
+}
+
+
+function mountPCB(root) {
+  const data = {
+    identity: ['PID 481 · Preparado', 'El PID identifica al proceso. El estado «Preparado» indica que puede recibir CPU.'],
+    context: ['Próxima instrucción · Registros guardados', 'El sistema guarda la próxima instrucción y los registros. Así el proceso puede continuar donde quedó.'],
+    resources: ['Espacio de direcciones · Archivos abiertos', 'El sistema registra la memoria y los archivos abiertos del proceso.']
+  };
+  function draw(key) {
+    setPressed(root, '[data-pcb]', 'pcb', key);
+    pick(root, '[data-field]').textContent = data[key][0];
+    describe(root, data[key][1]);
+  }
+  useChoice(root, '[data-pcb]', 'pcb', draw);
+  draw('identity');
+}
+
+function mountMessages(root) {
+  let queue = [];
+  let id = 0;
+  let lastSent = '—';
+  let lastRead = '—';
+  const send = pick(root, '[data-send]');
+  function draw(text, spoken) {
+    pick(root, '[data-queue]').innerHTML = queue.length
+      ? queue.map(message => chip(message, 0)).join('') : '<span class="small">Cola vacía</span>';
+    pick(root, '[data-last-sent]').textContent = lastSent;
+    pick(root, '[data-last-read]').textContent = lastRead;
+    describe(root, text, spoken);
+    send.disabled = queue.length === 3;
+  }
+  send.onclick = () => {
+    if (queue.length >= 3) return;
+    lastSent = 'M' + (++id);
+    queue.push(lastSent);
+    draw(`${lastSent} entra al final de la cola. Hay ${queue.length} de 3 espacios ocupados.`,
+      `${lastSent} entra al final de la cola. Los mensajes anteriores salen primero.`);
+  };
+  pick(root, '[data-receive]').onclick = () => {
+    if (!queue.length) {
+      draw('La cola está vacía.', 'La recepción devuelve el control sin esperar porque es una operación sin bloqueo.');
+      return;
+    }
+    lastRead = queue.shift();
+    draw(`B retira ${lastRead}. Quedan ${queue.length} en cola.`,
+      `B recibe ${lastRead}, el mensaje que entró primero.`);
+  };
+  pick(root, '[data-reset]').onclick = () => {
+    queue = [];
+    id = 0;
+    lastSent = lastRead = '—';
+    draw('Cola vacía.', 'La cola entrega primero el mensaje más antiguo.');
+  };
+  draw('Cola vacía.', 'La cola entrega primero el mensaje más antiguo.');
+}
+
+function mountSharedMap(root) {
+  let mappedA = false;
+  let mappedB = false;
+  let value = 0;
+  let seen = '—';
+  const mapA = pick(root, '[data-map-a]');
+  const mapB = pick(root, '[data-map-b]');
+  const write = pick(root, '[data-write]');
+  const read = pick(root, '[data-read]');
+  function draw(text, spoken) {
+    pick(root, '[data-a]').textContent = mappedA ? 'Vista de la región activa' : 'Sin vista de la región';
+    pick(root, '[data-b]').textContent = mappedB ? 'Vista de la región activa' : 'Sin vista de la región';
+    pick(root, '[data-value]').textContent = mappedA || mappedB ? 'Valor compartido = ' + value : 'Ningún proceso la ha mapeado';
+    pick(root, '[data-seen]').textContent = 'Última lectura de B: ' + seen;
+    describe(root, text, spoken);
+    mapA.disabled = mappedA;
+    mapB.disabled = mappedB;
+    write.disabled = !mappedA;
+    read.disabled = !mappedB;
+  }
+  mapA.onclick = () => {
+    mappedA = true;
+    draw('A incorpora una vista de la región.', 'A puede acceder a la región compartida.');
+  };
+  mapB.onclick = () => {
+    mappedB = true;
+    draw('B incorpora una vista de la misma región.', 'Los dos procesos conservan su memoria privada y acceden a la misma región compartida.');
+  };
+  write.onclick = () => {
+    value = 42;
+    draw('A escribió 42 en la región compartida.', 'El valor 42 queda disponible para B en la misma región.');
+  };
+  read.onclick = () => {
+    seen = value;
+    draw(`B leyó ${seen}.`, `B obtiene ${seen} porque su vista apunta a la región compartida.`);
+  };
+  pick(root, '[data-reset]').onclick = () => {
+    mappedA = mappedB = false;
+    value = 0;
+    seen = '—';
+    draw('Los procesos todavía no tienen una vista.', 'Cada proceso necesita acceso a la región para poder leer o escribir.');
+  };
+  draw('Los procesos todavía no tienen una vista.', 'Cada proceso necesita acceso a la región para poder leer o escribir.');
+}
+
+function mountRace(root) {
+  const runs = {
+    race: [
+      [0, '—', '—', 'A y B quieren sumar 1 a un contador que empieza en cero.'],
+      [0, '0', '—', 'A lee 0 y guarda una copia local.'],
+      [0, '0', '0', 'B también lee 0, antes de que A escriba.'],
+      [1, '0', '0', 'A escribe 1 a partir de su copia.'],
+      [1, '0', '0', 'B escribe 1 a partir de su copia anterior. Se esperaba 2. Se perdió una actualización.']
+    ],
+    mutex: [
+      [0, '—', '—', 'El mutex está libre. Los dos procesos siguen el mismo protocolo.'],
+      [0, '0', '—', 'A toma el mutex y lee 0.'],
+      [0, '0', 'Espera', 'B intenta tomar el mutex y queda esperando el acceso.'],
+      [1, '0', '—', 'A escribe 1 y libera el mutex.'],
+      [1, '0', '1', 'B toma el mutex y lee el valor actualizado.'],
+      [2, '0', '1', 'B escribe 2 y libera el mutex. Se conservan los dos incrementos.']
+    ]
+  };
+  function choose(mode) {
+    setPressed(root, '[data-race]', 'race', mode);
+    stepStory(root, runs[mode], ([value, a, b, text]) => `<div class="stack">
+      <div class="tri">${metric(a, 'Copia local de A')}${metric(value, 'Contador compartido')}${metric(b, 'Copia local de B')}</div>
+      <p class="status">${text}</p>
+    </div>`, ([value, a, b, text], index) => {
+      if (index === 0) return 'Cada proceso quiere sumar uno al contador compartido.';
+      if (index < runs[mode].length - 1) return text;
+      return mode === 'race'
+        ? 'El contador queda en uno. A y B leyeron el mismo cero y ambos guardaron uno.'
+        : 'El contador queda en dos. B espera su turno y lee el valor que dejó A.';
+    });
+  }
+  useChoice(root, '[data-race]', 'race', choose);
+  choose('race');
+}
+
+function mountAPI(root) {
+  const environment = pick(root, '[data-env]');
+  const permissions = pick(root, '[data-permission]');
+  function build() {
+    const windows = environment.value === 'windows';
+    const allowed = permissions.value === 'allowed';
+    const api = windows ? 'CreateFileW()' : 'open()';
+    const steps = [
+      ['Aplicación', 'informe.txt', 'El programa pide abrir informe.txt en modo de lectura.'],
+      ['Función de biblioteca', api, `La aplicación llama a ${api}. La función prepara la petición según la interfaz del sistema.`],
+      ['Núcleo', 'Validación', 'Una llamada al sistema transfiere el control al núcleo, que verifica la ruta y los permisos.'],
+      ['Resultado', allowed ? windows ? 'Manejador válido' : 'Descriptor 3 (ejemplo)' : 'Acceso denegado',
+        allowed ? 'El sistema permite abrir el archivo. La aplicación recibe un identificador que podrá usar para leer.'
+          : 'El núcleo rechaza la petición por falta de permiso. La función devuelve un error.']
+    ];
+    stepStory(root, steps, ([, , text], index) => `<div class="stack">
+      <div class="flow" style="--cols:4" aria-label="Recorrido de la solicitud">
+        ${steps.map(([title, value], i) => `<div class="flow-cell ${i === index ? 'active' : ''}" ${i === index ? 'aria-current="step"' : ''}>
+          <strong>${title}</strong><span>${value}</span>
+        </div>`).join('')}
+      </div><p class="status">${text}</p>
+    </div>`, ([, , text], index) => {
+      if (index === 0) return 'La aplicación solicita abrir un archivo.';
+      if (index === 2) return 'El núcleo comprueba si la aplicación tiene permiso para abrir el archivo.';
+      return text;
+    });
+  }
+  environment.onchange = permissions.onchange = build;
+  build();
+}
+
+
+const lessonVocabulary = {
+  program: ['Programa', 'Conjunto de instrucciones que le indican a la computadora qué hacer. Un editor de texto es un ejemplo.'],
+  instruction: ['Instrucción', 'Un paso que ejecuta el procesador, como sumar dos valores.'],
+  os: ['Sistema operativo', 'Programa que organiza el uso del procesador, la memoria y los archivos. Windows y Linux son ejemplos.'],
+  process: ['Proceso', 'Un programa mientras está en ejecución, junto con la memoria y los archivos que usa.'],
+  thread: ['Hilo', 'Secuencia de instrucciones que se ejecuta dentro de un proceso. Un mismo proceso puede tener varios hilos para hacer tareas distintas.'],
+  processNames: ['P1, P2, P3 · Procesos', 'Etiquetas del ejemplo. P1 quiere decir proceso 1, P2 quiere decir proceso 2 y así sucesivamente.'],
+  threadNames: ['H1, H2, H3 · Hilos', 'Etiquetas del ejemplo. H1 quiere decir hilo 1, H2 quiere decir hilo 2 y así sucesivamente.'],
+  mainThread: ['Hilo principal', 'Primer hilo que ejecuta las instrucciones del programa al iniciar el proceso. Puede crear otros hilos.'],
+  extraThread: ['Hilo adicional o trabajador', 'Hilo que se crea para ejecutar otra tarea dentro del mismo proceso.'],
+  mono: ['Monohilo', 'Proceso que tiene un solo hilo.'],
+  multi: ['Multihilo', 'Proceso que tiene dos o más hilos.'],
+  resource: ['Recurso', 'Algo que el programa usa para funcionar, como espacio de memoria o un archivo abierto.'],
+  memory: ['Memoria', 'Espacio donde se guardan las instrucciones y los datos que el programa está usando.'],
+  address: ['Dirección de memoria', 'Número que identifica un lugar de la memoria. El mapa agrupa esos lugares por su uso.'],
+  code: ['Código', 'Instrucciones del programa. Los hilos del mismo proceso pueden ejecutar partes distintas de ese código.'],
+  data: ['Datos', 'Valores que el programa usa, como un número o el texto de un documento.'],
+  globalData: ['Datos globales y estáticos', 'Valores guardados durante toda la ejecución del programa. En el dibujo aparecen en la fila Datos, una zona común del proceso.'],
+  files: ['Archivos abiertos', 'Documentos u otros datos que el proceso tiene disponibles para leer o escribir. Sus hilos pueden usar esos archivos.'],
+  function: ['Función', 'Parte del programa que realiza una tarea concreta, como calcular un total.'],
+  stack: ['Pila', 'Zona de memoria donde un hilo guarda datos temporales, como los números de un cálculo o el punto al que debe volver al terminar una función. Cada hilo tiene su propia pila.'],
+  registers: ['Registros', 'Espacios pequeños y rápidos del procesador. El sistema guarda los valores de cada hilo, incluido el punto del programa por donde sigue, para que pueda continuar al recibir otro turno.'],
+  heap: ['Montón', 'Zona de memoria donde el programa puede pedir espacio para guardar datos nuevos mientras funciona. Los hilos del mismo proceso pueden usar esa zona.'],
+  kernel: ['Núcleo del sistema operativo', 'Parte central del sistema operativo. Administra la memoria, organiza los turnos de CPU y atiende peticiones de los programas.'],
+  kernelSpace: ['Espacio del núcleo', 'Zona de memoria reservada para la parte central del sistema operativo.'],
+  userSpace: ['Espacio de usuario', 'Zona de memoria que el programa puede usar para guardar su código, sus datos y las pilas de sus hilos.'],
+  core: ['Núcleo del procesador', 'Unidad del procesador que ejecuta instrucciones. Varios núcleos permiten que varios hilos trabajen al mismo tiempo.'],
+  parallel: ['Paralelismo', 'Dos o más hilos ejecutan instrucciones al mismo tiempo, por ejemplo, uno en cada núcleo.'],
+  unit: ['Unidad de trabajo', 'Una parte del trabajo del ejemplo. Cada casilla representa una unidad y se llena cuando un hilo la completa.'],
+  projectedTurns: ['Turnos previstos', 'Cantidad de turnos que se estima que tomará terminar si se mantiene el mismo número de hilos disponibles.'],
+  cpu: ['CPU', 'Unidad central de procesamiento, también llamada procesador. Ejecuta las instrucciones de los programas.'],
+  schedule: ['Planificación de la CPU', 'Decisión sobre cuál de las tareas listas recibe el siguiente turno del procesador.'],
+  scheduler: ['Planificador', 'Parte del sistema operativo que elige qué tarea lista recibe el siguiente turno.'],
+  algorithm: ['Algoritmo', 'Regla que se aplica paso a paso. Aquí se usa para decidir quién recibe el próximo turno.'],
+  readyQueue: ['Cola de preparados', 'Lista de tareas listas para trabajar que esperan un turno de CPU. El planificador elige de esa lista.'],
+  state: ['Estado', 'Indica en qué situación está un hilo o proceso. Puede estar listo, ejecutando, esperando una operación o haber terminado.'],
+  ready: ['Preparado o disponible', 'Puede ejecutar en cuanto reciba un turno del procesador.'],
+  running: ['En CPU o ejecutando', 'Está usando el procesador para ejecutar instrucciones en ese momento.'],
+  blocked: ['Bloqueado', 'Está esperando que ocurra algo para continuar. Por ejemplo, espera a que termine la lectura de un archivo.'],
+  finished: ['Terminado', 'Ya completó su trabajo.'],
+  turn: ['Turno', 'Tiempo durante el cual el procesador ejecuta el trabajo de un hilo o un proceso.'],
+  giveUp: ['Ceder la CPU', 'Dejar libre el procesador para que otra tarea pueda recibir un turno.'],
+  resume: ['Reanudar', 'Continuar la ejecución desde el punto en el que se detuvo.'],
+  io: ['Entrada y salida (E/S)', 'Transferencia de datos entre el programa y un dispositivo. Leer un archivo es entrada. Escribirlo es salida.'],
+  device: ['Dispositivo de almacenamiento', 'Equipo que guarda archivos y entrega los datos cuando se solicita una lectura.'],
+  library: ['Biblioteca o librería', 'Conjunto de funciones que otros programas pueden usar. Una librería de hilos puede organizar los turnos entre los hilos de usuario.'],
+  userMode: ['Modo usuario', 'Forma en que se ejecutan las aplicaciones, con acceso a los recursos que les permite el sistema operativo.'],
+  kernelMode: ['Modo núcleo', 'Forma en que trabaja el núcleo del sistema operativo, con acceso directo a los recursos que administra.'],
+  userThread: ['Hilo de usuario', 'Hilo creado para hacer una tarea de la aplicación. Para ejecutar usa un hilo que el sistema operativo puede poner en la CPU.'],
+  kernelThread: ['Hilo de núcleo o planificable · K1.1, K2.1…', 'Hilo al que el sistema operativo puede dar un turno. La K identifica esos hilos en el dibujo.'],
+  manyToOne: ['N a 1 (N:1)', 'Varios hilos de usuario usan un solo hilo de núcleo. Los hilos de usuario se turnan para usarlo.'],
+  oneToOne: ['1 a 1 (1:1)', 'Cada hilo de usuario tiene un hilo de núcleo que puede recibir su propio turno.'],
+  blockingRead: ['Lectura bloqueante', 'Lectura en la que el hilo que la pidió espera hasta recibir los datos o un resultado de la operación.'],
+  readCall: ['read()', 'Función que pide leer datos, por ejemplo, de un archivo.'],
+  yieldCall: ['yield()', 'Acción de dejar voluntariamente el turno para que otro hilo listo pueda ejecutar.'],
+  createThread: ['pthread_create()', 'Función de POSIX que crea un hilo y le indica qué función va a ejecutar.'],
+  joinThread: ['pthread_join()', 'Función que espera a que termine un hilo. Si el hilo sigue trabajando, quien hizo la petición queda bloqueado.'],
+  joinCode: ['h2, tarea, datos y NULL', 'En el código, h2 identifica al nuevo hilo, tarea es la función que ejecuta y datos es lo que recibe. El signo & permite guardar el identificador en h2. NULL indica que al crear se usa la configuración habitual y al esperar se descarta el resultado.'],
+  millisecond: ['ms · Milisegundo', 'Unidad de tiempo. Mil milisegundos equivalen a un segundo.'],
+  timeSymbol: ['t · Instante de tiempo', 'Indica un punto en la escala. t = 2 quiere decir que han pasado 2 unidades desde el inicio. En estos gráficos se mide en milisegundos.'],
+  timeline: ['Línea de tiempo o diagrama de Gantt', 'Gráfico que se lee de izquierda a derecha. Cada bloque muestra qué proceso usa la CPU y durante cuánto tiempo.'],
+  arrival: ['Llegada', 'Instante en que el proceso entra a la lista de tareas preparadas.'],
+  burst: ['Ráfaga de CPU', 'Cantidad de trabajo de CPU que necesita un proceso antes de hacer otra operación o terminar. El laboratorio usa una sola ráfaga por proceso.'],
+  remaining: ['Tiempo restante', 'Tiempo de CPU que todavía necesita un proceso para terminar el trabajo de su ráfaga.'],
+  wait: ['Tiempo de espera', 'Suma de los intervalos en los que el proceso está preparado y espera usar la CPU.'],
+  response: ['Tiempo de respuesta o hasta empezar', 'Tiempo que pasa desde la llegada del proceso hasta que usa la CPU por primera vez.'],
+  turnaround: ['Tiempo de retorno o hasta terminar', 'Tiempo que pasa desde la llegada del proceso hasta que termina su trabajo.'],
+  average: ['Media o promedio', 'Se suman los valores de todos los procesos y se divide la suma por la cantidad de procesos.'],
+  totalTime: ['Tiempo total', 'Tiempo desde el inicio del ejemplo hasta que termina el último proceso.'],
+  idle: ['CPU libre', 'Intervalo en que el procesador del ejemplo está disponible y ninguna tarea lo usa.'],
+  utilization: ['Uso útil de CPU', 'Porcentaje del tiempo total que la CPU pasa ejecutando el trabajo de los procesos.'],
+  throughput: ['Rendimiento', 'Cantidad de procesos que terminan en una unidad de tiempo.'],
+  switchContext: ['Cambio de proceso o de contexto', 'Paso de una tarea a otra. El sistema guarda la información de la tarea que deja el procesador y carga la de la siguiente.'],
+  switchCost: ['Coste de cambio', 'Tiempo que se dedica a guardar y cargar la información al cambiar de proceso. En el laboratorio se elige en milisegundos.'],
+  dispatch: ['Despacho o asignación de CPU', 'Acción de dar la CPU a la tarea que el planificador ya eligió.'],
+  preemption: ['Expropiación', 'El sistema interrumpe una tarea que aún puede ejecutar y permite que otra use el procesador.'],
+  nonPreemptive: ['Sin expropiar', 'La tarea conserva el procesador hasta que termina su trabajo de CPU o lo deja para esperar.'],
+  fcfs: ['FCFS · First Come, First Served', 'Primero en llegar, primero en ser atendido. Da la CPU a quien lleva más tiempo en la cola.'],
+  convoy: ['Efecto convoy', 'Varias tareas cortas esperan detrás de una tarea larga que llegó primero.'],
+  rr: ['Round Robin (RR)', 'Reparte la CPU por turnos. Una tarea que agota su turno y sigue lista vuelve al final de la cola.'],
+  quantum: ['Quantum o cuanto', 'Duración máxima de un turno en Round Robin. Un proceso puede terminar su trabajo antes de agotar ese tiempo.'],
+  sjf: ['SJF · Shortest Job First', 'Cuando la CPU queda libre, elige la tarea lista con la ráfaga más corta.'],
+  srtf: ['SRTF · Shortest Remaining Time First', 'Elige la tarea con menos tiempo de CPU pendiente. Puede interrumpir a la que está ejecutando.'],
+  priority: ['Prioridad', 'Importancia que se le da a una tarea para elegir quién recibe CPU. En estas demostraciones, los números más bajos indican una prioridad más alta.'],
+  priorityPolicies: ['Planificación por prioridad', 'Elige la tarea lista de mayor prioridad. La versión expropiativa puede interrumpir una tarea en ejecución. La versión sin expropiar espera a que quede libre la CPU.'],
+  fixedPriority: ['Prioridad fija', 'La prioridad de una tarea se mantiene aunque espere varios turnos.'],
+  effectivePriority: ['Prioridad efectiva', 'Prioridad que se usa para elegir el próximo proceso, con los cambios que haya aplicado la regla de planificación.'],
+  priorityNames: ['P-alta y P-baja', 'P-alta representa los procesos que llegan con prioridad alta. P-baja es el proceso que comienza con prioridad baja.'],
+  aging: ['Envejecimiento', 'Aumentar la prioridad de una tarea conforme pasa el tiempo esperando.'],
+  starvation: ['Inanición', 'Una tarea espera indefinidamente porque otras reciben los turnos antes que ella.'],
+  multilevel: ['Colas multinivel', 'Varias listas de tareas preparadas, separadas según el tipo de trabajo. Cada lista puede tener su propia regla para repartir turnos.'],
+  background: ['Trabajo de fondo', 'Tareas que pueden avanzar con menor urgencia, como una copia de seguridad programada.'],
+  strictPriority: ['Prioridad estricta', 'Se atiende primero a la cola alta. La cola de fondo recibe un turno cuando la cola alta queda vacía.'],
+  share: ['Reparto 3 a 1', 'En este ejemplo, por cada tres turnos de la cola alta, la cola de fondo recibe uno.'],
+  feedback: ['Realimentación', 'Una regla que permite que las tareas cambien de cola según lo que les pasa. Por ejemplo, puede subir una tarea que lleva mucho tiempo esperando.'],
+  deadline: ['Plazo', 'Último instante en el que una tarea puede terminar a tiempo. En la tabla se compara con el instante real de fin.'],
+  earliestDeadline: ['Plazo más próximo primero', 'Da el siguiente turno a la tarea preparada cuyo plazo vence antes.'],
+  realtime: ['Tiempo real', 'Cuando importa que una tarea termine dentro de un plazo definido, además de que el resultado sea correcto.'],
+  pcb: ['PCB · Bloque de control del proceso', 'Ficha que usa el sistema operativo para recordar la identidad, el estado y los recursos de cada proceso. PCB viene de Process Control Block.'],
+  pid: ['PID · Identificador de proceso', 'Número que usa el sistema operativo para distinguir a un proceso de los demás.'],
+  context: ['Contexto de un proceso', 'Información que el sistema guarda para que el proceso pueda continuar, como los valores de sus registros y su próxima instrucción.'],
+  addressSpace: ['Espacio de direcciones', 'Conjunto de direcciones de memoria que puede usar un proceso.'],
+  message: ['Paso de mensajes', 'Forma de comunicación en la que un proceso envía datos como un mensaje y otro los recibe. M1 quiere decir mensaje 1.'],
+  fifo: ['Cola FIFO · First In, First Out', 'Guarda los mensajes hasta que se reciben. El primero que entra es el primero que sale.'],
+  nonBlocking: ['Recepción sin bloqueo', 'Si la cola está vacía, el proceso recupera el control de inmediato y puede seguir haciendo otra tarea.'],
+  privateMemory: ['Memoria privada', 'Memoria propia de un proceso. El otro proceso del ejemplo mantiene su propia memoria aparte.'],
+  sharedMemory: ['Memoria compartida', 'La misma zona de memoria a la que dos procesos pueden acceder. Lo que uno escribe allí queda disponible para que el otro lo lea.'],
+  mapping: ['Mapear o crear una vista', 'Dar a un proceso una forma de acceder a la región compartida desde sus propias direcciones de memoria. A y B pueden usar direcciones distintas para llegar a los mismos datos.'],
+  shmOpen: ['shm_open()', 'Función de POSIX que abre o crea un objeto de memoria compartida con nombre.'],
+  mmap: ['mmap()', 'Función que hace accesible un objeto, como la memoria compartida, desde las direcciones de memoria de un proceso.'],
+  synchronization: ['Sincronización', 'Coordinar cuándo actúan los procesos o hilos para que el acceso a los datos comunes produzca el resultado esperado.'],
+  increment: ['Contador e incremento', 'Un contador guarda una cantidad. Un incremento suma uno a ese valor.'],
+  localCopy: ['Copia local', 'Valor leído que cada proceso guarda para hacer su cálculo. Sigue siendo el valor original aunque el dato común cambie después.'],
+  race: ['Actualización perdida', 'Si A y B leen el mismo cero y ambos guardan uno, solo queda uno en el contador. Una de las dos sumas se pierde.'],
+  mutex: ['Mutex · Exclusión mutua', 'Mecanismo que permite que un solo proceso o hilo use los datos protegidos a la vez. En el ejemplo protege el contador desde que se lee hasta que se guarda el nuevo valor.'],
+  api: ['API · Interfaz de programación de aplicaciones', 'Funciones y reglas que un programa usa para pedir servicios, como abrir o leer un archivo.'],
+  posix: ['POSIX', 'Conjunto de reglas comunes para que programas como los de este ejemplo puedan pedir servicios de la misma manera en sistemas compatibles.'],
+  windowsApi: ['Windows API', 'Funciones que Windows ofrece a los programas para pedir servicios del sistema.'],
+  openFile: ['open() y CreateFileW()', 'Funciones que se usan en el ejemplo para abrir un archivo en POSIX y Windows, respectivamente.'],
+  sysCall: ['Llamada al sistema', 'Petición que hace el programa al núcleo para que realice una operación del sistema operativo.'],
+  permissions: ['Permisos y validación', 'Los permisos indican qué operaciones están autorizadas. El sistema los comprueba antes de permitir el acceso.'],
+  path: ['Ruta', 'Nombre que indica dónde se encuentra el archivo dentro de las carpetas.'],
+  handle: ['Descriptor o manejador de archivo', 'Identificador que recibe el programa al abrir un archivo. Luego lo usa para leer o cerrar ese archivo.'],
+  denied: ['Acceso denegado', 'Resultado que avisa que la operación pedida requiere un permiso que la aplicación no tiene.']
+};
+
+const termsBySlide = {
+  'hilos-inicio': ['thread', 'process', 'program', 'instruction', 'resource', 'memory', 'data', 'code', 'files'],
+  'hilos-editor': ['threadNames', 'processNames', 'thread', 'process', 'memory', 'data'],
+  'hilos-estados': ['state', 'ready', 'running', 'blocked', 'finished', 'threadNames', 'cpu', 'core', 'scheduler', 'readyQueue', 'turn', 'io', 'resume', 'idle'],
+  hilos: ['stack', 'registers', 'mono', 'multi', 'processNames', 'threadNames', 'mainThread', 'extraThread', 'resource', 'code', 'data', 'files', 'cpu', 'instruction'],
+  'hilos-memoria': ['stack', 'heap', 'globalData', 'data', 'code', 'kernel', 'kernelSpace', 'userSpace', 'memory', 'address', 'processNames', 'threadNames', 'function'],
+  nucleos: ['core', 'cpu', 'unit', 'turn', 'projectedTurns', 'parallel', 'threadNames', 'ready', 'blocked', 'io'],
+  'hilos-modelos': ['userThread', 'kernelThread', 'manyToOne', 'oneToOne', 'userMode', 'kernelMode', 'library', 'kernel', 'scheduler', 'processNames', 'threadNames'],
+  'hilos-lectura': ['blockingRead', 'readCall', 'yieldCall', 'io', 'device', 'manyToOne', 'oneToOne', 'library', 'kernel', 'kernelThread', 'cpu', 'ready', 'blocked', 'giveUp', 'resume', 'threadNames'],
+  'hilos-espera': ['io', 'blockingRead', 'cpu', 'core', 'timeline', 'millisecond', 'totalTime', 'turn', 'idle'],
+  'crear-y-esperar': ['mainThread', 'extraThread', 'createThread', 'joinThread', 'joinCode', 'function', 'posix', 'threadNames', 'scheduler', 'cpu', 'ready', 'blocked', 'finished'],
+  'cpu-inicio': ['cpu', 'schedule', 'readyQueue', 'scheduler', 'algorithm', 'os', 'ready', 'process', 'core', 'turn'],
+  cola: ['readyQueue', 'ready', 'running', 'blocked', 'io', 'giveUp', 'cpu', 'scheduler', 'processNames', 'turn', 'dispatch', 'idle'],
+  expropiacion: ['preemption', 'nonPreemptive', 'remaining', 'response', 'arrival', 'timeline', 'processNames', 'millisecond', 'timeSymbol', 'priority', 'quantum', 'scheduler'],
+  metricas: ['wait', 'response', 'turnaround', 'arrival', 'timeline', 'millisecond', 'processNames', 'utilization', 'throughput'],
+  fcfs: ['fcfs', 'timeline', 'millisecond', 'timeSymbol', 'processNames', 'arrival', 'burst', 'wait', 'average', 'totalTime', 'convoy'],
+  'sjf-srtf': ['sjf', 'srtf', 'burst', 'remaining', 'preemption', 'processNames', 'millisecond', 'timeSymbol', 'arrival', 'wait', 'average', 'timeline'],
+  'round-robin': ['rr', 'quantum', 'turn', 'millisecond', 'timeline', 'processNames', 'readyQueue', 'response', 'average', 'switchContext', 'burst', 'fcfs'],
+  prioridades: ['priority', 'fixedPriority', 'effectivePriority', 'aging', 'starvation', 'priorityNames', 'turn', 'cpu'],
+  laboratorio: [
+    'algorithm', 'fcfs', 'rr', 'sjf', 'srtf', 'priorityPolicies', 'quantum', 'switchCost', 'switchContext', 'dispatch',
+    'arrival', 'burst', 'remaining', 'priority', 'wait', 'response', 'turnaround', 'average', 'utilization', 'timeline',
+    'convoy', 'millisecond', 'timeSymbol', 'readyQueue', 'processNames', 'idle'
+  ],
+  comparar: [
+    'algorithm', 'response', 'wait', 'turnaround', 'average', 'timeline', 'millisecond', 'processNames', 'fcfs', 'rr',
+    'quantum', 'switchContext', 'switchCost', 'totalTime', 'sjf', 'srtf', 'priorityPolicies', 'idle'
+  ],
+  multinivel: ['multilevel', 'background', 'strictPriority', 'share', 'feedback', 'priority', 'turn', 'scheduler', 'cpu'],
+  plazos: ['deadline', 'earliestDeadline', 'realtime', 'burst', 'arrival', 'fcfs', 'timeline', 'millisecond', 'processNames'],
+  procesos: ['pcb', 'pid', 'process', 'ready', 'context', 'addressSpace', 'instruction', 'registers', 'resource', 'files', 'cpu', 'resume'],
+  mensajes: ['message', 'fifo', 'nonBlocking', 'process', 'data'],
+  memoria: ['sharedMemory', 'privateMemory', 'mapping', 'shmOpen', 'mmap', 'posix', 'address', 'process', 'synchronization'],
+  sincronizacion: ['synchronization', 'increment', 'mutex', 'localCopy', 'race', 'sharedMemory'],
+  interfaz: ['api', 'posix', 'windowsApi', 'library', 'openFile', 'sysCall', 'kernel', 'permissions', 'path', 'handle', 'denied']
+};
+
+
+const ull = 'https://ull-esit-sistemas-operativos.github.io/ssoo-apuntes/';
+const topics = {
+  threads: { name: 'Hilos', chapter: '13', path: 'procesos/hilos/' },
+  cpu: { name: 'Planificación de la CPU', chapter: '10', path: 'procesos/planificacion-de-la-cpu/' },
+  processes: { name: 'Procesos', chapter: '9', path: 'procesos/procesos/' },
+  messages: { name: 'Paso de mensajes', chapter: '11', path: 'procesos/comunicacion-mediante-paso-de-mensajes/' },
+  memory: { name: 'Memoria compartida', chapter: '12', path: 'procesos/memoria-compartida/' },
+  sync: { name: 'Sincronización', chapter: '14', path: 'procesos/sincronizacion/' },
+  api: { name: 'Interfaz de programación', chapter: '6', path: 'organizacion/interfaz-de-programacion-de-aplicaciones/' }
+};
+
+const deck = [
+  {
+    id: 'cpu-inicio', topic: 'cpu', title: 'Qué es la planificación de la CPU',
+    exposition: true,
+    definition: true,
+    intro: 'CPU significa unidad central de procesamiento, también llamada procesador. Planificar la CPU es decidir qué tarea lista puede usarla en el siguiente turno.',
+    board: () => `<div class="stack">
+      <div class="tri">
+        <section class="box definition-card"><h2>Cola de preparados</h2><p>Lista de tareas que pueden trabajar y esperan un turno.</p></section>
+        <section class="box definition-card"><h2>Planificador</h2><p>Parte del sistema operativo que elige una tarea de la lista según una regla.</p></section>
+        <section class="box definition-card"><h2>CPU o procesador</h2><p>Ejecuta las instrucciones de la tarea elegida.</p></section>
+      </div>
+      <p class="definition-example">Los ejemplos usan un solo núcleo del procesador y un hilo por proceso. Por eso ves un solo proceso en la CPU a la vez.</p>
+    </div>`
+  },
+  {
+    id: 'cola', topic: 'cpu', title: 'De la cola a la CPU',
+    exposition: true,
+    intro: 'Preparado significa que el proceso está listo y espera un turno. Bloqueado significa que espera el resultado de una operación, como leer un archivo.',
+    read: 'Preparado significa que el proceso espera turno. Bloqueado significa que espera una operación.',
+    actions: ['Sigue el botón azul desde <strong>Asignar CPU</strong> hasta <strong>Ceder CPU</strong>.'],
+    board: () => `<div class="stack">
+      ${storyBoard({ showPrevious: false })}
+      <p class="note"><strong>E/S</strong> significa entrada y salida de datos. En el ejemplo, el proceso recibe datos cuando termina de leer el archivo.</p>
+      <details class="extra-options"><summary>Cambiar orden de llegada</summary>
+        <div class="actions" role="group" aria-label="Primero en la cola">
+          <button type="button" data-first="P1">P1 llega primero</button>
+          <button type="button" data-first="P2">P2 llega primero</button>
+        </div>
+      </details>
+    </div>`,
+    mount: mountDispatch
+  },
+  {
+    id: 'expropiacion', topic: 'cpu', title: '¿Cuándo se puede quitar la CPU?',
+    intro: 'La expropiación permite interrumpir un proceso para dar la CPU a otro.',
+    read: 'P2 llega mientras P1 está ejecutando.',
+    actions: ['Cambia de <strong>Sin expropiar</strong> a <strong>Con expropiación</strong> y compara el inicio de P2.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Política de desalojo">
+        <button type="button" data-policy="fcfs">Sin expropiar</button>
+        <button type="button" data-policy="srtf">Con expropiación</button>
+      </div>
+      <p class="small">P1 llega en t = 0 y requiere 6 ms · P2 llega en t = 2 y requiere 2 ms</p>
+      <div data-demo></div>
+      <div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <p class="note">En el ejemplo, la decisión usa el tiempo restante. Otros planificadores pueden interrumpir por prioridad o al agotarse el turno.</p>
+    </div>`,
+    mount: mountPreemption
+  },
+  {
+    id: 'metricas', topic: 'cpu', title: 'Cómo leer el tiempo de un proceso',
+    intro: 'Cada bloque muestra quién usa la CPU. La escala indica cuándo empieza y cuándo termina.',
+    read: 'El tiempo de respuesta va desde la llegada hasta el primer turno.',
+    actions: ['Elige un proceso y cambia entre <strong>Espera</strong>, <strong>Respuesta</strong> y <strong>Retorno</strong>.'],
+    board: () => `<div class="stack">
+      <div class="strip"><strong>Proceso</strong><div class="actions" data-metric-jobs role="group" aria-label="Proceso que quieres observar"></div></div>
+      <div data-demo></div>
+      <div class="tri" data-job-times></div>
+      <div class="actions" role="group" aria-label="Métrica del proceso seleccionado">
+        <button type="button" data-metric="wait">Espera</button>
+        <button type="button" data-metric="response">Respuesta</button>
+        <button type="button" data-metric="turn">Retorno</button>
+      </div>
+      <div data-value></div><p class="status" data-status aria-live="polite"></p>
+      <p class="note">El uso útil mide el porcentaje de tiempo dedicado a ejecutar tareas. El rendimiento mide cuántos procesos se terminan por unidad de tiempo.</p>
+    </div>`,
+    mount: mountMetrics
+  },
+  {
+    id: 'fcfs', topic: 'cpu', title: 'FCFS · Orden de llegada',
+    exposition: true,
+    intro: 'FCFS viene de First Come, First Served. Significa que el proceso que llega primero recibe primero la CPU.',
+    read: 'P1 es el proceso más largo. Su posición en la cola afecta la espera de los demás.',
+    actions: ['Cambia de <strong>P1 llega primero</strong> a <strong>P1 llega al final</strong> y compara la espera de P3.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Orden de llegada">
+        <button type="button" data-order="first">P1 llega primero</button>
+        <button type="button" data-order="last">P1 llega al final</button>
+      </div>
+      <div class="strip">${chip('P1 · 8 ms', 0)}${chip('P2 · 4 ms', 1)}${chip('P3 · 2 ms', 2)}</div>
+      <p class="small">Las etiquetas indican cuánto trabajo necesita cada proceso. En la línea de tiempo, los bloques muestran cuándo usa la CPU. Los tiempos están en milisegundos (ms).</p>
+      <div data-demo></div><div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+    </div>`,
+    mount: mountConvoy
+  },
+  {
+    id: 'sjf-srtf', topic: 'cpu', title: 'Ráfaga más corta o menor tiempo restante',
+    intro: 'SJF elige el trabajo más corto al quedar libre la CPU. SRTF compara el tiempo que le queda a cada proceso.',
+    read: 'P3 llega en el instante dos.',
+    actions: ['Cambia entre <strong>SJF</strong> y <strong>SRTF</strong>. Compara <strong>CPU en t = 2</strong>.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Algoritmo por duración">
+        <button type="button" data-policy="sjf">SJF</button>
+        <button type="button" data-policy="srtf">SRTF</button>
+      </div>
+      <p class="small">P1 llega en 0 ms · P2 en 1 ms · P3 en 2 ms</p>
+      <div data-demo></div><div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <details><summary>Cómo se puede estimar una ráfaga</summary><p class="small">Se combina la última duración que se observó con la estimación anterior. Dar más peso al dato reciente hace que la estimación cambie con mayor rapidez.</p></details>
+    </div>`,
+    mount: mountShort
+  },
+  {
+    id: 'round-robin', topic: 'cpu', title: 'Round Robin · Turnos de CPU',
+    exposition: true,
+    intro: 'Round Robin reparte la CPU por turnos. El quantum es el tiempo máximo de un turno. Si al agotarlo queda trabajo, el proceso vuelve al final de la cola.',
+    read: 'El tiempo máximo de un turno se llama quantum.',
+    actions: ['Alterna entre <strong>2 ms</strong> y <strong>8 ms</strong> y compara los bloques.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Tiempo máximo por turno">
+        <strong>Tiempo por turno en milisegundos</strong><button type="button" data-set-q="2">2 ms</button><button type="button" data-set-q="8">8 ms</button>
+      </div>
+      <div data-demo></div><div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <details class="extra-options"><summary>Otro tiempo de turno</summary>
+        <label class="field">Tiempo en milisegundos
+          <select data-quantum>${Array.from({length: 12}, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}</select>
+        </label>
+      </details>
+    </div>`,
+    mount: mountRR
+  },
+  {
+    id: 'prioridades', topic: 'cpu', title: 'Prioridad alta, espera demasiado larga',
+    intro: 'Si siempre llegan tareas con más prioridad, una tarea de prioridad baja puede quedar esperando.',
+    read: 'Con envejecimiento, la prioridad mejora cada vez que la tarea espera.',
+    actions: ['Pulsa <strong>Avanzar 5 turnos</strong> con cada regla y compara si P-baja obtiene CPU.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Regla de prioridad">
+        <button type="button" data-aging="off">Prioridad fija</button>
+        <button type="button" data-aging="on">Con envejecimiento</button>
+      </div>
+      <div class="box stack-sm"><h3>Secuencia de turnos</h3><div data-demo></div></div>
+      <div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <div class="actions">
+        <button type="button" data-aging-step>Avanzar 1 turno</button>
+        <button class="primary" type="button" data-aging-five>Avanzar 5 turnos</button>
+        <button type="button" data-reset>Reiniciar</button>
+      </div>
+    </div>`,
+    mount: mountAging
+  },
+  {
+    id: 'laboratorio', topic: 'cpu', title: 'Laboratorio de planificación',
+    intro: 'El laboratorio muestra cuánto tiempo ejecuta y cuánto espera cada proceso.',
+    read: 'El resultado cambia al modificar los procesos o el algoritmo.',
+    actions: ['Pulsa <strong>Ejemplo Round Robin</strong> y selecciona <strong>P2</strong>.', 'Pulsa <strong>Avanzar tramo</strong> para ver qué proceso usa la CPU.'],
+    board: () => `<div class="stack">
+      <div class="lab-layout">${labConfig()}${labPlayback()}</div>
+      <details><summary>Qué incluye este modelo</summary><p class="small">Un núcleo y una ráfaga por proceso. En un empate de duraciones o prioridades se conserva el proceso en ejecución. En Round Robin, una llegada al final del quantum entra antes que la tarea que vuelve a la cola. Se cobra el coste solo al cambiar entre dos procesos sin un intervalo libre. Durante ese coste se mantiene la decisión de despacho.</p></details>
+    </div>`,
+    mount: mountLab
+  },
+  {
+    id: 'comparar', topic: 'cpu', title: 'Comparar algoritmos',
+    exposition: true,
+    intro: 'Un algoritmo es una regla que se aplica paso a paso. Comparamos dos reglas midiendo el tiempo desde que llega cada proceso hasta su primer turno.',
+    read: 'El tiempo hasta empezar se mide desde la llegada del proceso hasta su primer turno.',
+    actions: ['Elige <strong>P2</strong> o <strong>P3</strong>. Los bloques resaltados muestran sus turnos.'],
+    board: () => `<div class="stack">
+      <div class="strip"><strong>Proceso a comparar</strong><div class="actions" data-compare-jobs role="group" aria-label="Proceso a comparar"></div></div>
+      <p class="small" data-compare-use></p>
+      <div class="stack-sm" data-compare-plots></div>
+      <div class="box stack-sm compare-results">
+        <h3 data-compare-caption></h3>
+        <div class="compare-bars" data-compare-bars></div>
+      </div>
+      <p class="status" data-compare-status aria-live="polite"></p>
+      <details class="extra-options"><summary>Más opciones</summary>
+        <div class="stack-sm">
+          <div class="split">
+            <label class="field">Primer algoritmo<select data-compare-a>${policyOptions}</select></label>
+            <label class="field">Segundo algoritmo<select data-compare-b>${policyOptions}</select></label>
+          </div>
+          <div class="actions" role="group" aria-label="Tiempo que se compara">
+            <button type="button" data-compare-metric="wait">Espera total</button>
+            <button type="button" data-compare-metric="response">Tiempo hasta empezar</button>
+            <button type="button" data-compare-metric="turn">Tiempo hasta terminar</button>
+            <button type="button" data-compare-average data-entity="all">Promedio</button>
+          </div>
+          <div class="actions">
+            <button type="button" data-compare-sample>Restablecer ejemplo</button>
+            <button type="button" data-compare-lab>Usar datos del laboratorio</button>
+          </div>
+        </div>
+      </details>
+    </div>`,
+    mount: mountCompare
+  },
+  {
+    id: 'multinivel', topic: 'cpu', title: 'Una cola para cada tipo de trabajo',
+    intro: 'El planificador puede separar el trabajo urgente del trabajo de fondo y repartir turnos entre las dos colas.',
+    read: 'La cola de fondo también necesita turnos para avanzar.',
+    actions: ['Alterna entre <strong>Prioridad estricta</strong> y <strong>Reparto 3 a 1</strong>.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Política entre colas">
+        <button type="button" data-queues="strict">Prioridad estricta</button>
+        <button type="button" data-queues="share">Reparto 3 a 1</button>
+      </div>
+      <p class="small">Ambas colas tienen trabajo disponible durante los 8 turnos.</p>
+      <div data-demo></div><div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <details><summary>Qué cambia si hay realimentación</summary><p class="small">Una política puede mover tareas entre colas. Por ejemplo, una que agota su turno puede bajar y una que espera demasiado puede subir.</p></details>
+    </div>`,
+    mount: mountQueues
+  },
+  {
+    id: 'plazos', topic: 'cpu', title: 'Cuando importa cumplir un plazo',
+    intro: 'Una tarea cumple su plazo si termina a tiempo. La tabla muestra el plazo y el instante de fin.',
+    read: 'P2 tiene el plazo más cercano.',
+    actions: ['Alterna entre las dos reglas y compara <strong>Plazo</strong> con <strong>Fin</strong> para P2.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Política para cumplir plazos">
+        <button type="button" data-deadline="fcfs">Por orden de llegada</button>
+        <button type="button" data-deadline="deadline">Plazo más próximo primero</button>
+      </div>
+      <div data-demo></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Proceso</th><th>Ráfaga</th><th>Plazo</th><th>Fin</th><th>Resultado</th></tr></thead>
+        <tbody data-rows></tbody>
+      </table></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <p class="note">Este ejemplo ilustra el orden por plazos con dos tareas disponibles desde el inicio. Si la carga supera la capacidad de la CPU, algunos plazos pueden ser imposibles.</p>
+    </div>`,
+    mount: mountDeadlines
+  }
+];
+
+
+deck.unshift(
+  {
+    id: 'hilos-inicio', topic: 'threads', title: 'Qué es un hilo',
+    exposition: true,
+    definition: true,
+    intro: 'Un hilo es una secuencia de instrucciones dentro de un proceso. Cada instrucción es un paso que realiza la computadora.',
+    board: () => `<div class="stack">
+      <div class="split">
+        <section class="box definition-card"><h2>Proceso</h2><p>Es un programa en funcionamiento. Usa memoria para guardar sus instrucciones y datos.</p></section>
+        <section class="box definition-card"><h2>Hilo</h2><p>Se encarga de seguir los pasos de una tarea. Un mismo proceso puede tener varios hilos para hacer trabajos distintos.</p></section>
+      </div>
+      <p class="definition-example">En un editor de texto, un hilo atiende lo que escribes y otro revisa la ortografía. Los dos usan el mismo documento.</p>
+    </div>`
+  },
+  {
+    id: 'hilos-editor', topic: 'threads', title: 'Dos hilos, un documento',
+    exposition: true,
+    opening: true,
+    intro: 'H1 significa hilo 1 y H2, hilo 2. H1 escribe el texto y H2 revisa el mismo documento guardado en la memoria del editor.',
+    read: 'La memoria del editor guarda el texto. Los dos hilos pueden usarlo porque forman parte del mismo proceso.',
+    actions: ['Pulsa <strong>H1 · Escribir</strong> y luego <strong>H2 · Revisar</strong>.'],
+    board: () => `<div class="stack">
+      <div class="editor-viz">
+        <div class="editor-window">
+          <div class="editor-titlebar between"><strong>informe.txt</strong><span class="small">Documento compartido · Proceso P1</span></div>
+          <ol class="editor-sheet" data-editor-lines aria-label="Texto del documento"></ol>
+        </div>
+        <div class="box editor-controls">
+          <h3>Hilos del editor</h3>
+          <button class="primary" type="button" data-editor-write>H1 · Escribir</button>
+          <button type="button" data-editor-review>H2 · Revisar</button>
+          <button type="button" data-editor-reset>Reiniciar documento</button>
+        </div>
+      </div>
+      <p class="status" data-status aria-live="polite"></p>
+    </div>`,
+    mount: mountThreadIntro
+  },
+  {
+    id: 'hilos-estados', topic: 'threads', title: 'Estados de un hilo',
+    intro: 'Un hilo preparado espera CPU. Un hilo bloqueado espera que termine una operación, como una lectura.',
+    read: 'El estado indica si el hilo puede ejecutar.',
+    actions: ['Elige <strong>H2</strong> y <strong>Necesita una lectura</strong>. Pulsa <strong>Dar turno</strong> y <strong>Pedir lectura</strong>.'],
+    board: () => `<div class="stack">
+      <div class="between">
+        <div class="actions" role="group" aria-label="Hilo observado">
+          <strong>Hilo</strong>
+          ${entityButton('H1', 0, true, 'data-state-thread')}
+          ${entityButton('H2', 1, false, 'data-state-thread')}
+        </div>
+        <div class="actions" role="group" aria-label="Motivo para dejar el núcleo">
+          <button type="button" data-state-mode="io">Necesita una lectura</button>
+          <button type="button" data-state-mode="quantum">Se agota su turno</button>
+        </div>
+      </div>
+      ${storyBoard()}
+    </div>`,
+    mount: mountThreadStates
+  },
+  {
+    id: 'hilos', topic: 'threads', title: 'Proceso monohilo y multihilo',
+    exposition: true,
+    intro: 'Un proceso con un hilo es monohilo. Con dos o más hilos es multihilo. P1 y P2 son los nombres de los dos procesos del dibujo.',
+    read: 'Los hilos usan las mismas instrucciones, datos y archivos del proceso. Cada hilo conserva su propia pila y sus valores de los registros.',
+    actions: ['Pulsa <strong>Añadir hilo a P2</strong>. Aparecerán su pila y sus registros.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Configurar P2">
+        <button class="primary" type="button" data-anatomy-add>Añadir hilo a P2</button>
+        <button type="button" data-anatomy-reset>Reiniciar P2</button>
+      </div>
+      <div class="split">
+        <p class="note"><strong>Pila.</strong> Zona de memoria para los datos temporales de un hilo.</p>
+        <p class="note"><strong>Registros.</strong> Espacios pequeños del procesador que guardan valores, como el punto del programa por donde sigue el hilo.</p>
+      </div>
+      <div class="diagram-pair" data-process-diagram></div>
+      <div class="box stack-sm inspector">
+        <h3 data-anatomy-title></h3>
+        <p data-status aria-live="polite"></p>
+      </div>
+      <details class="extra-options"><summary>Más controles</summary>
+        <div class="actions">
+          <button type="button" data-anatomy-remove>Quitar último hilo</button>
+          <button type="button" data-anatomy-advance></button>
+        </div>
+      </details>
+    </div>`,
+    mount: mountProcessAnatomy
+  },
+  {
+    id: 'hilos-memoria', topic: 'threads', title: 'Una pila por hilo',
+    exposition: true,
+    intro: 'Una pila es una zona de memoria donde un hilo guarda datos temporales, como los números de un cálculo.',
+    read: 'Cada fila que dice Pila corresponde a un hilo. Debajo está la memoria que usan todos los hilos de P2.',
+    actions: ['<span data-memory-cue>Pulsa <strong>Mostrar la pila nueva</strong>.</span><span data-memory-done hidden>Pulsa <strong>Siguiente</strong> para pasar de la memoria a los núcleos.</span>'],
+    board: () => `<div class="memory-lab">
+      <div class="memory-controls stack-sm">
+        <div class="memory-moments" data-memory-moments role="group" aria-label="Cantidad de hilos y pilas"></div>
+        <div class="actions">
+          <button class="primary" type="button" data-memory-toggle aria-controls="thread-address-map">Mostrar la pila nueva</button>
+        </div>
+        <p class="status" data-status aria-live="polite"></p>
+      </div>
+      <div class="memory-map" id="thread-address-map" data-address-map role="group" aria-label="Mapa de direcciones de P2"></div>
+    </div>`,
+    mount: mountThreadMemory
+  },
+  {
+    id: 'nucleos', topic: 'threads', title: 'Hilos y núcleos',
+    exposition: true,
+    intro: 'Un núcleo del procesador es una unidad que ejecuta instrucciones. En este ejemplo, cada núcleo con un hilo listo puede completar una casilla de trabajo por turno.',
+    read: 'Con un solo núcleo se hace una unidad por turno. Con tres hilos y tres núcleos se pueden hacer tres.',
+    actions: ['Pulsa <strong>Avanzar un turno</strong> en el caso de un núcleo.', 'Elige <strong>3 hilos · 3 núcleos</strong>, avanza un turno y compara las casillas llenas.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Casos con el mismo trabajo">
+        <button type="button" data-work-case="3:1">3 hilos · 1 núcleo</button>
+        <button type="button" data-work-case="3:3">3 hilos · 3 núcleos</button>
+        <button class="primary" type="button" data-work-step>Avanzar un turno</button>
+      </div>
+      <div class="flow" style="--cols:4" data-core-map aria-label="Estado de los núcleos"></div>
+      <div class="box stack-sm"><h3>Unidades de trabajo</h3><div class="workload" data-work></div></div>
+      <div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <details class="extra-options" data-work-options><summary>Más controles</summary>
+        <div class="stack-sm">
+          <div class="between">
+            <div class="actions">
+              <button type="button" data-work-case="1:1">1 hilo · 1 núcleo</button>
+              <button type="button" data-thread-add>Añadir hilo</button>
+              <button type="button" data-thread-remove>Quitar hilo</button>
+              <button type="button" data-work-finish>Completar trabajo</button>
+              <button type="button" data-default>Restablecer escenario</button>
+              <button type="button" data-reset>Reiniciar trabajo</button>
+            </div>
+            <label class="field">Núcleos<select data-cores>
+              <option value="1">1 núcleo</option><option value="2">2 núcleos</option>
+              <option value="3">3 núcleos</option><option value="4">4 núcleos</option>
+            </select></label>
+          </div>
+          <div class="box stack-sm inspector">
+            <div class="strip"><strong>Hilo a observar</strong><div class="actions" data-work-threads role="group" aria-label="Hilo a observar"></div></div>
+            <div class="between">
+              <span class="small" data-thread-state aria-live="polite"></span>
+              <button type="button" data-thread-block></button>
+            </div>
+          </div>
+          <p class="small">Al cambiar de caso, el trabajo vuelve a empezar. El modelo supone tareas independientes.</p>
+        </div>
+      </details>
+    </div>`,
+    mount: mountThreadWork
+  },
+  {
+    id: 'hilos-modelos', topic: 'threads', title: 'Hilos de usuario y de núcleo',
+    intro: 'Los hilos de usuario hacen el trabajo de la aplicación. Los hilos de núcleo son los que el sistema operativo puede poner a ejecutar en el procesador.',
+    read: 'En N:1, varios hilos usan un hilo de núcleo. En 1:1, cada hilo tiene el suyo.',
+    actions: ['Selecciona un hilo de <strong>P2</strong> y alterna entre <strong>N:1</strong> y <strong>1:1</strong>.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Modelo de hilos">
+        <button type="button" data-thread-model="many">Muchos a uno (N:1)</button>
+        <button type="button" data-thread-model="one">Uno a uno (1:1)</button>
+      </div>
+      <div class="diagram-pair" data-thread-models></div>
+      <p class="status" data-status aria-live="polite"></p>
+      <div class="actions"><button class="primary" type="button" data-jump="hilos-lectura">Probar una lectura bloqueante →</button></div>
+    </div>`,
+    mount: mountThreadModels
+  },
+  {
+    id: 'hilos-lectura', topic: 'threads', title: 'Lectura bloqueante',
+    intro: 'Una lectura es bloqueante cuando quien la pide debe esperar el resultado. Aquí H2 se detiene hasta recibir los datos del archivo.',
+    read: 'La fila de estados indica si H1 puede ejecutar mientras H2 espera.',
+    actions: ['Pulsa <strong>Ir al bloqueo</strong>. Cambia entre <strong>N:1</strong> y <strong>1:1</strong> para ver el estado de H1.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Modelo durante la lectura">
+        <button type="button" data-read-model="many">Muchos a uno (N:1)</button>
+        <button type="button" data-read-model="one">Uno a uno (1:1)</button>
+      </div>
+      <div class="between">
+        <div class="actions">
+          <button class="primary" type="button" data-sequence-next></button>
+          <button type="button" data-sequence-back>Paso anterior</button>
+          <button type="button" data-sequence-block>Ir al bloqueo</button>
+          <button type="button" data-sequence-reset>Reiniciar</button>
+        </div>
+        <span class="small" data-sequence-count></span>
+      </div>
+      <div class="flow" data-read-states aria-live="polite"></div>
+      <div class="sequence-scroll"><div class="sequence-chart" data-read-sequence aria-label="Secuencia de la lectura"></div></div>
+    </div>`,
+    mount: mountThreadSequence
+  },
+  {
+    id: 'hilos-espera', topic: 'threads', title: 'Un hilo espera y otro puede avanzar',
+    intro: 'A espera una lectura. B puede trabajar durante esa espera si el sistema le da un turno.',
+    read: 'Las dos líneas muestran cuándo se usa el núcleo y cuándo se hace la lectura.',
+    actions: ['Cambia de <strong>Un hilo</strong> a <strong>Dos hilos</strong> y compara el tiempo total.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Hilos para ejecutar A y B">
+        <button type="button" data-thread-io="one">Un hilo</button>
+        <button type="button" data-thread-io="two">Dos hilos</button>
+        <span class="small">1 núcleo · mismas tareas A y B</span>
+      </div>
+      <div><h3>Uso de CPU</h3><div data-cpu></div></div>
+      <div><h3>Lectura del archivo</h3><div data-io></div></div>
+      <div class="grid-stats" data-stats></div>
+      <p class="status" data-status aria-live="polite"></p>
+    </div>`,
+    mount: mountThreadIO
+  },
+  {
+    id: 'crear-y-esperar', topic: 'threads', title: 'Crear un hilo y esperar su resultado',
+    intro: 'H1 es el hilo con el que empieza el programa. Crea a H2 para otra tarea y puede detenerse a esperar hasta que H2 termine.',
+    read: 'La espera termina cuando H2 finaliza.',
+    actions: ['Pulsa <strong>Crear H2</strong>, <strong>Esperar a H2</strong> y <strong>Finalizar H2</strong>, en ese orden.'],
+    board: () => `<div class="stack">
+      <div class="flow" style="--cols:2">
+        <div class="flow-cell active"><strong>H1 · Principal</strong><span data-h1></span></div>
+        <div class="flow-cell"><strong>H2 · Trabajador</strong><span data-h2></span></div>
+      </div>
+      <pre class="inline-code"><code data-code></code></pre>
+      <p class="status" data-status aria-live="polite"></p>
+      <div class="actions">
+        <button class="primary" type="button" data-create>Crear H2</button>
+        <button type="button" data-join>Esperar a H2</button>
+        <button type="button" data-finish>Finalizar H2</button>
+        <button type="button" data-reset>Reiniciar</button>
+      </div>
+      <p class="note">En un sistema real, el planificador decide cuándo obtiene CPU cada hilo preparado. El orden de esta demo representa una ejecución posible.</p>
+    </div>`,
+    mount: mountThreadJoin
+  }
+);
+
+deck.push(
+  {
+    id: 'procesos', topic: 'processes', title: 'Qué guarda el sistema sobre un proceso',
+    intro: 'El PCB, o bloque de control del proceso, es la ficha que usa el sistema operativo para recordar la información de un proceso.',
+    read: 'El PCB permite identificar al proceso y reanudarlo.',
+    actions: ['Pulsa <strong>Identidad</strong>, <strong>Contexto</strong> o <strong>Recursos</strong> para ver qué guarda el sistema.'],
+    board: () => `<div class="stack">
+      <div class="box stack">
+        <h3>PCB de ejemplo</h3>
+        <div class="actions" role="group" aria-label="Campo del bloque de control">
+          <button type="button" data-pcb="identity">Identidad</button><button type="button" data-pcb="context">Contexto</button>
+          <button type="button" data-pcb="resources">Recursos</button>
+        </div>
+        <strong class="mono" data-field></strong>
+      </div>
+      <p class="status" data-status aria-live="polite"></p>
+    </div>`,
+    mount: mountPCB
+  },
+  {
+    id: 'mensajes', topic: 'messages', title: 'Enviar y recibir por una cola',
+    intro: 'La cola guarda los mensajes mientras esperan a ser recibidos. FIFO significa que el primer mensaje que entra es el primero que sale.',
+    read: 'A envía datos y B los recibe en el mismo orden.',
+    actions: ['Pulsa <strong>Enviar desde A</strong> dos veces y luego <strong>Recibir en B</strong>.'],
+    board: () => `<div class="stack">
+      <div class="flow">
+        <div class="flow-cell"><strong>Proceso A</strong><span>Último enviado</span><strong data-last-sent></strong></div>
+        <div class="flow-cell active"><strong>Cola FIFO</strong><div class="strip" data-queue></div></div>
+        <div class="flow-cell"><strong>Proceso B</strong><span>Último recibido</span><strong data-last-read></strong></div>
+      </div>
+      <div class="actions">
+        <button class="primary" type="button" data-send>Enviar desde A</button>
+        <button type="button" data-receive>Recibir en B</button>
+        <button type="button" data-reset>Reiniciar</button>
+      </div>
+      <p class="status" data-status aria-live="polite"></p>
+    </div>`,
+    mount: mountMessages
+  },
+  {
+    id: 'memoria', topic: 'memory', title: 'Dos procesos, una región de memoria',
+    intro: 'La memoria compartida es una zona que dos procesos pueden usar para leer y escribir los mismos datos. Mapear le da a cada proceso acceso a esa zona.',
+    read: 'Cada proceso conserva su propia memoria y ambos acceden a la región del centro.',
+    actions: ['Pulsa <strong>Mapear en A</strong> y <strong>Mapear en B</strong>. Luego pulsa <strong>A escribe 42</strong> y <strong>B lee</strong>.'],
+    board: () => `<div class="stack">
+      <div class="flow">
+        <div class="flow-cell"><strong>Proceso A</strong><span>Memoria privada de A</span><span data-a></span></div>
+        <div class="flow-cell active"><strong>Región compartida</strong><span data-value></span></div>
+        <div class="flow-cell"><strong>Proceso B</strong><span>Memoria privada de B</span><span data-b></span><strong data-seen></strong></div>
+      </div>
+      <div class="actions">
+        <button class="primary" type="button" data-map-a>Mapear en A</button>
+        <button type="button" data-map-b>Mapear en B</button>
+        <button type="button" data-write>A escribe 42</button>
+        <button type="button" data-read>B lee</button>
+        <button type="button" data-reset>Reiniciar</button>
+      </div>
+      <p class="status" data-status aria-live="polite"></p>
+      <p class="note">En POSIX, <code>shm_open()</code> permite abrir una región con nombre y <code>mmap()</code> crea una vista. Si ambos procesos escriben, también necesitan coordinar el acceso.</p>
+      <div class="actions"><button type="button" data-jump="sincronizacion">Ver cómo se coordina →</button></div>
+    </div>`,
+    mount: mountSharedMap
+  },
+  {
+    id: 'sincronizacion', topic: 'sync', title: '¿Cómo se pierde un incremento?',
+    intro: 'Dos procesos quieren sumar uno al mismo contador. Un mutex les permite hacerlo por turnos, de modo que solo uno accede al contador a la vez.',
+    read: 'Un proceso lee, suma uno y guarda el resultado.',
+    actions: ['Avanza hasta el final en <strong>Sin mutex</strong> y luego en <strong>Con mutex</strong>. Compara el contador.'],
+    board: () => `<div class="stack">
+      <div class="actions" role="group" aria-label="Protección del contador">
+        <button type="button" data-race="race">Sin mutex</button>
+        <button type="button" data-race="mutex">Con mutex</button>
+      </div>
+      ${storyBoard()}
+      <p class="note">El mutex protege toda la secuencia de lectura y escritura. A y B deben usar el mismo mutex.</p>
+    </div>`,
+    mount: mountRace
+  },
+  {
+    id: 'interfaz', topic: 'api', title: 'El recorrido de una petición al sistema',
+    intro: 'Una API es el conjunto de funciones con las que una aplicación pide servicios al sistema. En esta demostración, la aplicación pide abrir un archivo.',
+    read: 'La petición va del programa al núcleo.',
+    actions: ['Usa <strong>Siguiente paso</strong> hasta el resultado y repite con <strong>Sin permiso</strong>.'],
+    board: () => `<div class="stack">
+      <div class="split">
+        <label class="field">Interfaz<select data-env><option value="posix">POSIX</option><option value="windows">Windows API</option></select></label>
+        <label class="field">Acceso al ejemplo<select data-permission><option value="allowed">Con permiso</option><option value="denied">Sin permiso</option></select></label>
+      </div>
+      ${storyBoard()}
+      <p class="note">Recorrido simplificado para abrir un archivo existente. La demo usa un nombre y resultados de ejemplo.</p>
+    </div>`,
+    mount: mountAPI
+  }
+);
+
+
+const stage = document.getElementById('slide');
+const dialog = document.getElementById('index');
+const termsDialog = document.getElementById('slide-terms');
+const indexTopics = document.getElementById('index-topics');
+const indexSlides = document.getElementById('index-slides');
+const previous = document.getElementById('previous');
+const next = document.getElementById('next');
+const guideToggle = document.getElementById('toggle-script');
+const topicOrder = Object.keys(topics);
+const exhibitionTopics = topicOrder.slice(0, 2);
+const guided = deck.filter(slide => slide.exposition);
+const fragmentPrefix = '#diapo-';
+const requested = deck.find(slide => fragmentPrefix + slide.id === location.hash);
+let current = requested ?? deck[0];
+let dispose = null;
+
+function topicTitle(id) {
+  const number = topicOrder.indexOf(id) + 1;
+  return 'Tema ' + String(number).padStart(2, '0') + ' · ' + topics[id].name;
+}
+
+function slidePath(slide) {
+  return slide.exposition ? guided : deck.filter(item => item.topic === slide.topic && !item.exposition);
+}
+
+function updateNavigation() {
+  const path = slidePath(current);
+  const index = path.indexOf(current);
+  const displayCount = value => String(value).padStart(2, '0');
+  document.getElementById('position').textContent = displayCount(index + 1) + ' / ' + displayCount(path.length);
+  document.getElementById('route-name').textContent = topicTitle(current.topic);
+  document.getElementById('progress').style.setProperty('--progress', (index + 1) / path.length * 100 + '%');
+  previous.disabled = index <= 0;
+  next.disabled = index >= path.length - 1;
+  previous.title = index > 0 ? path[index - 1].title : 'Inicio del recorrido';
+  next.title = index < path.length - 1 ? path[index + 1].title : 'Fin del recorrido';
+}
+
+function showSlide(slide, moveFocus = true) {
+  if (dispose) dispose();
+  current = slide;
+  const topic = topics[slide.topic];
+  const source = topic ? `<p class="slide-source">Fuente del tema · <a href="${ull + topic.path}"
+    target="_blank" rel="noopener noreferrer">Capítulo ${topic.chapter} de los apuntes de la ULL ↗</a></p>` : '';
+  const instructions = slide.actions?.length ? `<section class="lesson-support lesson-choice" id="lesson-choice" aria-labelledby="lesson-choice-title">
+    <h2 id="lesson-choice-title">Qué elegir</h2>
+    ${slide.actions.length === 1 ? `<p>${slide.actions[0]}</p>` : `<ol>${slide.actions.map(action => `<li>${action}</li>`).join('')}</ol>`}
+  </section>` : '';
+  const explanation = slide.read ? `<section class="lesson-support lesson-explanation" id="lesson-explanation" aria-label="Explicación de la demostración">
+    <p data-say>${slide.read}</p>
+  </section>` : '';
+  const termButton = termsBySlide[slide.id]
+    ? '<button class="terms-button" type="button" data-open-terms aria-haspopup="dialog" aria-controls="slide-terms">Términos</button>'
+    : '';
+  stage.innerHTML = `<article class="slide-surface slide-enter ${slide.definition ? 'definition-slide' : ''}" aria-labelledby="slide-title">
+    <header class="slide-head">
+      <div class="between">
+        <div class="label">${topicTitle(slide.topic)}</div>
+        ${termButton}
+      </div>
+      <h1 id="slide-title" tabindex="-1">${slide.title}</h1>
+      <p>${slide.intro}</p>
+    </header>
+    ${instructions}
+    ${slide.exposition ? explanation : ''}
+    <section class="panel ${slide.opening ? 'opening' : ''}" aria-label="${slide.definition ? 'Definición' : 'Demostración'}">${slide.board()}</section>
+    ${slide.exposition ? '' : explanation}
+    ${source}
+  </article>`;
+  guideToggle.hidden = !instructions && !explanation;
+  dispose = slide.mount?.(stage) ?? null;
+  updateNavigation();
+  try {
+    history.replaceState(null, '', fragmentPrefix + slide.id);
+  } catch {
+    // The presentation also works in viewers that disallow changing the address.
+  }
+  if (moveFocus) pick(stage, '#slide-title').focus({ preventScroll: true });
+  window.scrollTo(0, 0);
+}
+
+function changeBy(delta) {
+  const path = slidePath(current);
+  const target = path[path.indexOf(current) + delta];
+  if (target) showSlide(target);
+}
+
+function chooseIndexTopic(id) {
+  const slides = deck.filter(slide => slide.topic === id);
+  const lesson = slides.filter(slide => slide.exposition);
+  const additional = lesson.length ? slides.filter(slide => !slide.exposition) : [];
+  const links = entries => `<div class="index-links">${entries.map(slide => `<button type="button"
+    class="${slide.definition ? 'primary' : ''}" data-jump="${slide.id}"
+    ${current === slide ? 'aria-current="page"' : ''}>${slide.title}</button>`).join('')}</div>`;
+  setPressed(indexTopics, '[data-topic]', 'topic', id);
+  indexSlides.innerHTML = `<h3 id="index-topic-title">${topicTitle(id)}</h3>
+    ${links(lesson.length ? lesson : slides)}
+    ${additional.length ? `<details class="extra-options" ${additional.includes(current) ? 'open' : ''}>
+      <summary>Más demostraciones</summary>${links(additional)}
+    </details>` : ''}`;
+}
+
+function openIndex() {
+  chooseIndexTopic(current.topic);
+  if (dialog.open) return;
+  dialog.showModal();
+  dialog.scrollTop = 0;
+}
+
+function jump(id) {
+  const slide = deck.find(item => item.id === id);
+  if (!slide) return;
+  if (dialog.open) dialog.close();
+  showSlide(slide);
+}
+
+function openTerms() {
+  document.getElementById('terms-slide-title').textContent = current.title;
+  document.getElementById('terms-list').innerHTML = termsBySlide[current.id].map(key => {
+    const [term, definition] = lessonVocabulary[key];
+    return `<div><dt>${term}</dt><dd>${definition}</dd></div>`;
+  }).join('');
+  termsDialog.showModal();
+  termsDialog.scrollTop = 0;
+}
+
+stage.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (button?.hasAttribute('data-open-terms')) openTerms();
+  else if (button?.dataset.jump) jump(button.dataset.jump);
+});
+dialog.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  if (button.dataset.topic) {
+    chooseIndexTopic(button.dataset.topic);
+  } else if (button.dataset.jump) {
+    jump(button.dataset.jump);
+  }
+});
+const indexButton = document.getElementById('open-index');
+indexButton.textContent = `Temario · ${topicOrder.length}`;
+indexButton.onclick = openIndex;
+document.getElementById('index-title').textContent = `Temario · ${topicOrder.length} temas`;
+indexTopics.innerHTML = topicOrder.map((id, i) => `<button type="button" class="index-topic" data-topic="${id}" aria-controls="index-slides">
+  <span class="index-number">${String(i + 1).padStart(2, '0')}</span>
+  <span>${topics[id].name}</span>
+  ${exhibitionTopics.includes(id) ? '<span class="index-tag">Exposición</span>' : ''}
+</button>`).join('');
+guideToggle.onclick = event => {
+  const hidden = document.body.classList.toggle('script-hidden');
+  event.currentTarget.setAttribute('aria-pressed', String(!hidden));
+};
+previous.onclick = () => changeBy(-1);
+next.onclick = () => changeBy(1);
+
+const fullscreen = document.getElementById('fullscreen');
+fullscreen.hidden = !document.fullscreenEnabled;
+async function toggleFullscreen() {
+  if (!document.fullscreenEnabled) return;
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+    fullscreen.removeAttribute('title');
+  } catch {
+    fullscreen.title = 'Puedes usar F11 para mostrar el navegador en pantalla completa.';
+  }
+}
+fullscreen.onclick = toggleFullscreen;
+document.addEventListener('fullscreenchange', () => {
+  fullscreen.textContent = document.fullscreenElement ? 'Salir de pantalla completa' : 'Pantalla completa';
+});
+document.addEventListener('keydown', event => {
+  if (dialog.open || termsDialog.open || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+  if (event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+  const key = event.key;
+  if (key === 'ArrowRight' || key === 'PageDown' || (key === ' ' && !event.target.closest('button, a, summary'))) {
+    event.preventDefault();
+    changeBy(1);
+  } else if (key === 'ArrowLeft' || key === 'PageUp') {
+    event.preventDefault();
+    changeBy(-1);
+  } else if (key.toLowerCase() === 'f') {
+    event.preventDefault();
+    toggleFullscreen();
+  }
+});
+showSlide(current, false);
+
+}());
+  </script>
+</body>
+</html>
